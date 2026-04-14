@@ -1,0 +1,40 @@
+name: reposter
+description: "Minimal repost helper for TikTok and Instagram links."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  http: ^1.5.0
+  html: ^0.15.6
+  path: ^1.9.1
+  path_provider: ^2.1.5
+  share_plus: ^12.0.1
+  video_player: ^2.10.0
+  shared_preferences: ^2.5.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/reposter.png
+    - assets/social_media/
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/reposter.png
+  adaptive_icon_background: "#1B1523"
+  adaptive_icon_foreground: assets/reposter.png
+  remove_alpha_ios: true
+  adaptive_icon_foreground_inset: 16
