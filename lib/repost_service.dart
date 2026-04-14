@@ -2,10 +2,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 enum SocialPlatform { instagram, tiktok }
 
@@ -148,7 +150,17 @@ class RepostService {
         'Server returned error ${response.statusCode}. The content might be private or restricted.',
       );
     }
-    return response.body;
+    
+    final html = response.body;
+    // Check for common signs of a login wall or bot detection page
+    if (html.contains('login') && 
+        (html.contains('accounts/login') || html.contains('login_page')) && 
+        !html.contains('shortcode_media')) {
+      _log('Login wall detected.');
+      throw const FormatException('Instagram is temporarily restricting access. Please try again in 10-20 seconds.');
+    }
+    
+    return html;
   }
 
   Future<_ExtractedPost> _extractTikTokViaApi(Uri sourceUrl) async {
@@ -188,6 +200,20 @@ class RepostService {
   }
 
   Future<_ExtractedPost> _extractInstagramMetadata(Uri sourceUrl) async {
+    try {
+      return await _doExtractInstagramMetadata(sourceUrl);
+    } catch (e) {
+      // If we hit a temporary block, try one more time after a short delay
+      if (e.toString().contains('temporarily restricting access')) {
+        _log('Retrying Instagram extraction after 2s delay...');
+        await Future.delayed(const Duration(seconds: 2));
+        return await _doExtractInstagramMetadata(sourceUrl);
+      }
+      rethrow;
+    }
+  }
+
+  Future<_ExtractedPost> _doExtractInstagramMetadata(Uri sourceUrl) async {
     final patterns = [
       RegExp(r'/(?:p|reel|reels)/([^/?#&]+)'),
       RegExp(r'/share/reel/([^/?#&]+)'),
@@ -226,13 +252,19 @@ class RepostService {
         if (media != null) {
           final videoUrl = media['video_versions']?[0]?['url'] ?? media['video_url'];
           if (videoUrl != null) {
-            final thumbnailUrl = media['image_versions2']?['candidates']?[0]?['url'] ?? media['display_url'] ?? '';
-            final authorThumb = media['user']?['profile_pic_url'] ?? '';
+            // Priority: screenshot_url (cleanest), then image candidates, then display_url
+            final candidates = media['image_versions2']?['candidates'] as List<dynamic>?;
+            final thumbnailUrl = _cleanUrl(media['screenshot_url'] ?? 
+                media['video_versions']?[0]?['screenshot_url'] ??
+                candidates?.lastOrNull?['url'] ?? 
+                candidates?[0]?['url'] ?? 
+                media['display_url'] ?? '');
+            final authorThumb = _cleanUrl(media['user']?['profile_pic_url'] ?? '');
             return _ExtractedPost(
               videoUrl: videoUrl,
-              thumbnailUrl: thumbnailUrl,
+              thumbnailUrl: thumbnailUrl ?? '',
               author: media['user']?['username'] ?? media['owner']?['username'] ?? 'ig_user',
-              authorProfileImageUrl: authorThumb,
+              authorProfileImageUrl: authorThumb ?? '',
               description: media['caption']?['text'] ?? media['edge_media_to_caption']?['edges']?[0]?['node']?['text'] ?? '',
             );
           }
@@ -283,11 +315,22 @@ class RepostService {
       throw const FormatException('Could not extract video. The post may be private or require login.');
     }
 
+    // Try to find clean thumbnail in both embed and post HTML
+    // We look for 'screenshot_url', 'dst-jpegr', or base64 'xpids' marker (InhwaWRz)
+    final cleanThumb = _cleanUrl(
+      _firstMatch(embedHtml + postHtml, [
+        RegExp(r'screenshot_url\\?":\\?"(https?:[^"]+)"'),
+        RegExp(r'(https?:[^"]+dst-jpegr[^"]+)'),
+        RegExp(r'(https?:[^"]+InhwaWRz[^"]+)'),
+      ]),
+    );
+
     return _extractMetadata(
       html: postHtml,
       platform: SocialPlatform.instagram,
       providedVideoUrl: videoUrl,
       providedCaption: caption,
+      providedThumbnailUrl: cleanThumb,
     );
   }
 
@@ -296,6 +339,7 @@ class RepostService {
     required SocialPlatform platform,
     String? providedVideoUrl,
     String? providedCaption,
+    String? providedThumbnailUrl,
   }) {
     final document = html_parser.parse(html);
 
@@ -322,27 +366,31 @@ class RepostService {
 
     if (videoUrl == null) throw const FormatException('Could not find the video source.');
 
-    final thumbnailUrl = _decodeEscapedUrl(metaByNames(['og:image', 'og:image:secure_url', 'thumbnail_url', 'thumbnail', 'twitter:image']) ??
-        _firstMatch(html, [
-          RegExp(r'display_url\\":\\"([^"]+)\\"'),
-          RegExp(r'thumbnail_src\\":\\"([^"]+)\\"'),
-          RegExp(r'"display_url":"([^"]+)"'),
-          RegExp(r'"thumbnail_url":"([^"]+)"'),
-          RegExp(r'"origin_cover":"([^"]+)"'),
-          RegExp(r'"cover":"([^"]+)"'),
-          RegExp(r'"poster":"([^"]+)"'),
-        ])) ?? '';
+    final thumbnailUrl = providedThumbnailUrl ??
+        _cleanUrl(_firstMatch(html, [
+              // Try screenshot_url first
+              RegExp(r'screenshot_url\\?":\\?"(https?:[^"]+)"'),
+              // Try any URL containing dst-jpegr or InhwaWRz (clean screenshot markers)
+              RegExp(r'(https?:[^"]+dst-jpegr[^"]+)'),
+              RegExp(r'(https?:[^"]+InhwaWRz[^"]+)'),
+              // Try thumbnail_src
+              RegExp(r'thumbnail_src\\":\\"([^"]+)\\"'),
+              RegExp(r'"thumbnail_src":"([^"]+)"'),
+            ]) ??
+            metaByNames(['og:image', 'og:image:secure_url', 'thumbnail_url', 'thumbnail', 'twitter:image']) ??
+            _firstMatch(html, [
+              // Fallback to other sources
+              RegExp(r'display_url\\":\\"([^"]+)\\"'),
+              RegExp(r'"display_url":"([^"]+)"'),
+              RegExp(r'"thumbnail_url":"([^"]+)"'),
+              RegExp(r'"origin_cover":"([^"]+)"'),
+              RegExp(r'"cover":"([^"]+)"'),
+              RegExp(r'"poster":"([^"]+)"'),
+            ])) ??
+        '';
 
-    // Use provided caption if available, otherwise try meta tags
-    String description = providedCaption ?? '';
-    
-    // Fallback to meta description if no caption found
-    if (description.isEmpty) {
-      final metaDesc = metaByNames(['description', 'og:description', 'twitter:description']);
-      if (metaDesc != null) {
-        description = _cleanCaption(metaDesc);
-      }
-    }
+    // Use provided caption if available
+    final description = providedCaption ?? '';
 
     final author = _firstMatch(html, [
           RegExp(r'username\\":\\"([^"]+)\\"'),
@@ -513,6 +561,29 @@ class RepostService {
     return cleaned;
   }
 
+  String? _cleanUrl(String? url) {
+    if (url == null) return null;
+    
+    // Decode HTML entities (like &amp;)
+    var decoded = html_parser.parseFragment(url).text ?? url;
+    
+    // Handle escaped JSON URLs (https:\/\/...)
+    decoded = _decodeEscapedUrl(decoded) ?? decoded;
+    
+    // If it's a srcset (contains multiple URLs followed by descriptors like '640w'), take the first URL
+    if (decoded.contains(' ')) {
+      // Split by whitespace and take the first token
+      decoded = decoded.split(RegExp(r'\s+')).first;
+    }
+    
+    // Remove trailing commas if any
+    if (decoded.endsWith(',')) {
+      decoded = decoded.substring(0, decoded.length - 1);
+    }
+    
+    return decoded.trim();
+  }
+
   String? _decodeEscapedUrl(String? url) {
     if (url == null) return null;
     try {
@@ -583,4 +654,80 @@ class _ExtractedPost {
   final String description;
   final String author;
   final String authorProfileImageUrl;
+}
+
+/// Bridge for sharing videos to social media platforms
+class ShareBridge {
+  static const _channel = MethodChannel('reposter/share');
+
+  Future<void> shareToPlatform({
+    required SocialPlatform platform,
+    required String filePath,
+    required String caption,
+  }) async {
+    if (kDebugMode) print('[Share] Sharing ${platform.label} video: $filePath');
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      await _shareOnAndroid(
+        platform: platform,
+        filePath: filePath,
+        caption: caption,
+      );
+      return;
+    }
+
+    await Share.shareXFiles(
+      [XFile(filePath)],
+      text: caption,
+    );
+  }
+
+  Future<void> _shareOnAndroid({
+    required SocialPlatform platform,
+    required String filePath,
+    required String caption,
+  }) async {
+    final packages = switch (platform) {
+      SocialPlatform.instagram => const ['com.instagram.android'],
+      SocialPlatform.tiktok => const [
+        'com.zhiliaoapp.musically',
+        'com.ss.android.ugc.trill',
+      ],
+    };
+
+    PlatformException? lastError;
+
+    for (final packageName in packages) {
+      try {
+        await _channel.invokeMethod<void>('shareToTarget', {
+          'filePath': filePath,
+          'packageName': packageName,
+          'caption': caption,
+        });
+        return;
+      } on PlatformException catch (error) {
+        lastError = error;
+        if (error.code != 'APP_NOT_FOUND') {
+          rethrow;
+        }
+      }
+    }
+
+    throw lastError ??
+        PlatformException(
+          code: 'APP_NOT_FOUND',
+          message: 'Install the target app first.',
+        );
+  }
+
+  Future<void> shareGeneric({
+    required String filePath,
+    required String caption,
+  }) async {
+    await Share.shareXFiles(
+      [XFile(filePath)],
+      text: caption,
+    );
+  }
+
+  bool get supportsDirectAppShare => !kIsWeb && Platform.isAndroid;
 }
