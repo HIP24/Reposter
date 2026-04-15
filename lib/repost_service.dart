@@ -256,8 +256,8 @@ class RepostService {
             final candidates = media['image_versions2']?['candidates'] as List<dynamic>?;
             final thumbnailUrl = _cleanUrl(media['screenshot_url'] ?? 
                 media['video_versions']?[0]?['screenshot_url'] ??
-                candidates?.lastOrNull?['url'] ?? 
                 candidates?[0]?['url'] ?? 
+                candidates?.lastOrNull?['url'] ?? 
                 media['display_url'] ?? '');
             final authorThumb = _cleanUrl(media['user']?['profile_pic_url'] ?? '');
             return _ExtractedPost(
@@ -315,15 +315,39 @@ class RepostService {
       throw const FormatException('Could not extract video. The post may be private or require login.');
     }
 
-    // Try to find clean thumbnail in both embed and post HTML
-    // We look for 'screenshot_url', 'dst-jpegr', or base64 'xpids' marker (InhwaWRz)
-    final cleanThumb = _cleanUrl(
-      _firstMatch(embedHtml + postHtml, [
+    // --- Smart Thumbnail Extraction (Reference-Match Strategy) ---
+    // 1. Get a "Reference URL" that we KNOW belongs to this reel (from embed or og:tags)
+    final referenceUrl = _cleanUrl(
+      _firstMatch(embedHtml, [
         RegExp(r'screenshot_url\\?":\\?"(https?:[^"]+)"'),
-        RegExp(r'(https?:[^"]+dst-jpegr[^"]+)'),
-        RegExp(r'(https?:[^"]+InhwaWRz[^"]+)'),
+        RegExp(r'"display_url":"([^"]+)"'),
+      ]) ?? _firstMatch(postHtml, [
+        RegExp(r'<meta[^>]*?property="og:image"[^>]*?content="([^"]+)"'),
+        RegExp(r'"display_url":"([^"]+)"'),
       ]),
     );
+
+    String? cleanThumb;
+    if (referenceUrl != null) {
+      // 2. Extract the unique file ID from the reference URL
+      // Example: .../12345_67890_n.jpg -> 12345_67890
+      final fileIdMatch = RegExp(r'/([A-Za-z0-9_]+)_n\.jpg').firstMatch(referenceUrl);
+      final fileId = fileIdMatch?.group(1);
+      
+      if (fileId != null) {
+        _log('Reference ID found: $fileId. Searching for high-res variant...');
+        // 3. Search for the BEST version of THIS SPECIFIC file (InhwaWRz/XPIDS)
+        cleanThumb = _cleanUrl(
+          _firstMatch(postHtml + embedHtml, [
+            RegExp('(https?:[^"]+$fileId[^"]+InhwaWRz[^"]+)'),
+            RegExp('(https?:[^"]+$fileId[^"]+dst-jpegr[^"]+)'),
+          ]),
+        );
+      }
+    }
+
+    // Step 4: Fallback to the reference URL if no high-res variant found
+    cleanThumb ??= referenceUrl;
 
     return _extractMetadata(
       html: postHtml,
@@ -368,11 +392,19 @@ class RepostService {
 
     final thumbnailUrl = providedThumbnailUrl ??
         _cleanUrl(_firstMatch(html, [
-              // Try screenshot_url first
+              // Try high-resolution markers first
+              RegExp(r'display_url\\?":\\?"(https?:[^"]+InhwaWRz[^"]+)"'),
+              RegExp(r'"display_url":"([^"]+InhwaWRz[^"]+)"'),
+              RegExp(r'screenshot_url\\?":\\?"(https?:[^"]+InhwaWRz[^"]+)"'),
+              RegExp(r'"screenshot_url":"([^"]+InhwaWRz[^"]+)"'),
+              // Then any screenshot_url
               RegExp(r'screenshot_url\\?":\\?"(https?:[^"]+)"'),
-              // Try any URL containing dst-jpegr or InhwaWRz (clean screenshot markers)
-              RegExp(r'(https?:[^"]+dst-jpegr[^"]+)'),
-              RegExp(r'(https?:[^"]+InhwaWRz[^"]+)'),
+              RegExp(r'"screenshot_url":"([^"]+)"'),
+              // Then specifically flagged high-res URLs
+              RegExp(r'display_url\\?":\\?"(https?:[^"]+(?:1080x|1080|720x1280|1350)[^"]+)"'),
+              // Then other specific markers
+              RegExp(r'display_url\\?":\\?"(https?:[^"]+dst-jpegr[^"]+)"'),
+              RegExp(r'"display_url":"([^"]+dst-jpegr[^"]+)"'),
               // Try thumbnail_src
               RegExp(r'thumbnail_src\\":\\"([^"]+)\\"'),
               RegExp(r'"thumbnail_src":"([^"]+)"'),
