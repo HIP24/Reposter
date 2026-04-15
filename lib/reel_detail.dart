@@ -8,8 +8,8 @@ import 'package:video_player/video_player.dart';
 import 'repost_service.dart';
 import 'history.dart';
 
-enum WatermarkPosition { none, topLeft, topRight, bottomLeft, bottomRight }
-enum WatermarkTheme { black, white }
+
+
 
 class RepostDetailPage extends StatefulWidget {
   const RepostDetailPage({
@@ -33,9 +33,7 @@ class _RepostDetailPageState extends State<RepostDetailPage> {
   VideoPlayerController? _videoController;
   bool _isReady = false;
 
-  WatermarkPosition _wmPosition = WatermarkPosition.none;
-  WatermarkTheme _wmTheme = WatermarkTheme.black;
-  bool _isAttributionExpanded = false;
+
   bool _isCaptionExpanded = false;
 
   @override
@@ -221,93 +219,7 @@ class _RepostDetailPageState extends State<RepostDetailPage> {
                                       fit: StackFit.expand,
                                       children: [
                                         VideoPlayer(_videoController!),
-                                        if (_wmPosition != WatermarkPosition.none)
-                                          Positioned(
-                                            top: (_wmPosition ==
-                                                        WatermarkPosition.topLeft ||
-                                                    _wmPosition ==
-                                                        WatermarkPosition.topRight)
-                                                ? 4
-                                                : null,
-                                            bottom: (_wmPosition ==
-                                                        WatermarkPosition.bottomLeft ||
-                                                    _wmPosition ==
-                                                        WatermarkPosition.bottomRight)
-                                                ? 4
-                                                : null,
-                                            left: (_wmPosition ==
-                                                        WatermarkPosition.topLeft ||
-                                                    _wmPosition ==
-                                                        WatermarkPosition.bottomLeft)
-                                                ? 4
-                                                : null,
-                                            right: (_wmPosition ==
-                                                        WatermarkPosition.topRight ||
-                                                    _wmPosition ==
-                                                        WatermarkPosition.bottomRight)
-                                                ? 4
-                                                : null,
-                                            child: Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                  horizontal: 3, vertical: 2),
-                                              decoration: BoxDecoration(
-                                                color: _wmTheme == WatermarkTheme.black
-                                                    ? Colors.black.withOpacity(0.6)
-                                                    : Colors.white.withOpacity(0.8),
-                                                borderRadius: BorderRadius.circular(4),
-                                              ),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  ClipRRect(
-                                                    borderRadius:
-                                                        BorderRadius.circular(2),
-                                                    child: Image.asset(
-                                                      'assets/reposter.png',
-                                                      width: 8,
-                                                      height: 8,
-                                                      fit: BoxFit.cover,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 3),
-                                                  CircleAvatar(
-                                                    radius: 5,
-                                                    backgroundImage: widget
-                                                            .item
-                                                            .draft
-                                                            .authorProfileImageUrl
-                                                            .isNotEmpty
-                                                        ? NetworkImage(widget
-                                                            .item
-                                                            .draft
-                                                            .authorProfileImageUrl)
-                                                        : null,
-                                                    backgroundColor: Colors.grey[800],
-                                                    child: widget
-                                                            .item
-                                                            .draft
-                                                            .authorProfileImageUrl
-                                                            .isEmpty
-                                                        ? const Icon(Icons.person,
-                                                            size: 5, color: Colors.white)
-                                                        : null,
-                                                  ),
-                                                  const SizedBox(width: 3),
-                                                  Text(
-                                                    author.replaceFirst('@', ''),
-                                                    style: TextStyle(
-                                                      fontSize: 7,
-                                                      fontWeight: FontWeight.bold,
-                                                      color: _wmTheme ==
-                                                              WatermarkTheme.black
-                                                          ? Colors.white
-                                                          : Colors.black,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
+
                                         GestureDetector(
                                           onTap: () {
                                             final controller = _videoController!;
@@ -356,139 +268,7 @@ class _RepostDetailPageState extends State<RepostDetailPage> {
                 );
               },
             ),
-            const SizedBox(height: 18),
-            Theme(
-              data: theme.copyWith(dividerColor: Colors.transparent),
-              child: ExpansionTile(
-                initiallyExpanded: false,
-                onExpansionChanged: (val) =>
-                    setState(() => _isAttributionExpanded = val),
-                tilePadding: EdgeInsets.zero,
-                trailing: Icon(
-                  _isAttributionExpanded
-                      ? Icons.keyboard_arrow_down_rounded
-                      : Icons.keyboard_arrow_right_rounded,
-                  color: theme.brightness == Brightness.dark
-                      ? Colors.white54
-                      : Colors.black54,
-                  size: 20,
-                ),
-                title: Text(
-                  'ATTRIBUTION SETTINGS',
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.brightness == Brightness.dark
-                        ? Colors.white54
-                        : Colors.black54,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-                children: [
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Position', style: theme.textTheme.bodySmall),
-                            const SizedBox(height: 8),
-                            DropdownButtonFormField<WatermarkPosition>(
-                              value: _wmPosition,
-                              decoration: InputDecoration(
-                                filled: true,
-                                fillColor: theme.brightness == Brightness.dark
-                                    ? const Color(0xFF332D37)
-                                    : Colors.black.withOpacity(0.05),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide.none,
-                                ),
-                              ),
-                              items: WatermarkPosition.values.map((p) {
-                                return DropdownMenuItem(
-                                  value: p,
-                                  child: Text(p.name.toUpperCase(),
-                                      style: const TextStyle(fontSize: 12)),
-                                );
-                              }).toList(),
-                              onChanged: (val) =>
-                                  setState(() => _wmPosition = val!),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Color', style: theme.textTheme.bodySmall),
-                            const SizedBox(height: 8),
-                            DropdownButtonFormField<WatermarkTheme>(
-                              value: _wmTheme,
-                              onChanged: _wmPosition == WatermarkPosition.none
-                                  ? null
-                                  : (val) =>
-                                      setState(() => _wmTheme = val!),
-                              decoration: InputDecoration(
-                                filled: true,
-                                fillColor: theme.brightness == Brightness.dark
-                                    ? const Color(0xFF332D37).withOpacity(
-                                        _wmPosition == WatermarkPosition.none
-                                            ? 0.4
-                                            : 1.0)
-                                    : Colors.black.withOpacity(
-                                        _wmPosition == WatermarkPosition.none
-                                            ? 0.02
-                                            : 0.05),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide.none,
-                                ),
-                              ),
-                              items: WatermarkTheme.values.map((t) {
-                                final isEnabled =
-                                    _wmPosition != WatermarkPosition.none;
-                                return DropdownMenuItem(
-                                  value: t,
-                                  child: Opacity(
-                                    opacity: isEnabled ? 1.0 : 0.5,
-                                    child: Row(
-                                      children: [
-                                        Container(
-                                          width: 12,
-                                          height: 12,
-                                          decoration: BoxDecoration(
-                                            color: t == WatermarkTheme.black
-                                                ? Colors.black
-                                                : Colors.white,
-                                            shape: BoxShape.circle,
-                                            border: t == WatermarkTheme.white
-                                                ? Border.all(
-                                                    color: Colors.white24)
-                                                : null,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(t.name.toUpperCase(),
-                                            style:
-                                                const TextStyle(fontSize: 12)),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                ],
-              ),
-            ),
+
             Theme(
               data: theme.copyWith(dividerColor: Colors.transparent),
               child: ExpansionTile(
