@@ -119,36 +119,48 @@ class _RepostDetailPageState extends State<RepostDetailPage> {
             ? const Color(0xFF1F1A24)
             : const Color(0xFFF0F0F5),
         surfaceTintColor: Colors.transparent,
-        title: Row(
-          children: [
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: theme.brightness == Brightness.dark
-                  ? const Color(0xFF332C3B)
-                  : const Color(0xFFE0E0E0),
-              backgroundImage: widget.item.draft.authorProfileImageUrl.isNotEmpty
-                  ? NetworkImage(widget.item.draft.authorProfileImageUrl)
-                  : null,
-              child: widget.item.draft.authorProfileImageUrl.isEmpty
-                  ? Text(
-                      author
-                          .replaceFirst('@', '')
-                          .characters
-                          .take(1)
-                          .toString()
-                          .toUpperCase()
-                          .ifEmpty('R'),
-                      style: theme.textTheme.labelSmall
-                          ?.copyWith(fontWeight: FontWeight.bold),
-                    )
-                  : null,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-                child: Text(author,
-                    style: theme.textTheme.titleMedium,
-                    overflow: TextOverflow.ellipsis)),
-          ],
+        title: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            final cleanAuthor = author.replaceFirst(RegExp(r'^@'), '');
+            if (cleanAuthor != 'unknown') {
+              final url = widget.item.draft.platform == SocialPlatform.instagram
+                  ? 'https://www.instagram.com/$cleanAuthor/'
+                  : 'https://www.tiktok.com/@$cleanAuthor';
+              launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+            }
+          },
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: theme.brightness == Brightness.dark
+                    ? const Color(0xFF332C3B)
+                    : const Color(0xFFE0E0E0),
+                backgroundImage: widget.item.draft.authorProfileImageUrl.isNotEmpty
+                    ? NetworkImage(widget.item.draft.authorProfileImageUrl)
+                    : null,
+                child: widget.item.draft.authorProfileImageUrl.isEmpty
+                    ? Text(
+                        author
+                            .replaceFirst('@', '')
+                            .characters
+                            .take(1)
+                            .toString()
+                            .toUpperCase()
+                            .ifEmpty('R'),
+                        style: theme.textTheme.labelSmall
+                            ?.copyWith(fontWeight: FontWeight.bold),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                  child: Text(author,
+                      style: theme.textTheme.titleMedium,
+                      overflow: TextOverflow.ellipsis)),
+            ],
+          ),
         ),
         actions: [
           IconButton(
@@ -182,145 +194,167 @@ class _RepostDetailPageState extends State<RepostDetailPage> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(22, 16, 22, 24),
           children: [
-            Center(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.45,
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.zero,
-                  child: AspectRatio(
-                    aspectRatio: _isReady
-                        ? _videoController!.value.aspectRatio
-                        : 9 / 16,
-                    child: ColoredBox(
-                      color: theme.brightness == Brightness.dark
-                          ? const Color(0xFF222028)
-                          : const Color(0xFFEEEEEE),
-                      child: _isReady
-                          ? Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                VideoPlayer(_videoController!),
-                                if (_wmPosition != WatermarkPosition.none)
-                                  Positioned(
-                                    top: (_wmPosition ==
-                                                WatermarkPosition.topLeft ||
-                                            _wmPosition ==
-                                                WatermarkPosition.topRight)
-                                        ? 4
-                                        : null,
-                                    bottom: (_wmPosition ==
-                                                WatermarkPosition.bottomLeft ||
-                                            _wmPosition ==
-                                                WatermarkPosition.bottomRight)
-                                        ? 4
-                                        : null,
-                                    left: (_wmPosition ==
-                                                WatermarkPosition.topLeft ||
-                                            _wmPosition ==
-                                                WatermarkPosition.bottomLeft)
-                                        ? 4
-                                        : null,
-                                    right: (_wmPosition ==
-                                                WatermarkPosition.topRight ||
-                                            _wmPosition ==
-                                                WatermarkPosition.bottomRight)
-                                        ? 4
-                                        : null,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 3, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: _wmTheme == WatermarkTheme.black
-                                            ? Colors.black.withOpacity(0.6)
-                                            : Colors.white.withOpacity(0.8),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          ClipRRect(
-                                            borderRadius:
-                                                BorderRadius.circular(2),
-                                            child: Image.asset(
-                                              'assets/reposter.png',
-                                              width: 8,
-                                              height: 8,
-                                              fit: BoxFit.cover,
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final aspect = _isReady ? _videoController!.value.aspectRatio : 9 / 16;
+                final maxHeight = MediaQuery.of(context).size.height * 0.45;
+                final videoWidth = (maxHeight * aspect).clamp(0.0, constraints.maxWidth);
+
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Center(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxHeight: maxHeight,
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.zero,
+                          child: AspectRatio(
+                            aspectRatio: aspect,
+                            child: ColoredBox(
+                              color: theme.brightness == Brightness.dark
+                                  ? const Color(0xFF222028)
+                                  : const Color(0xFFEEEEEE),
+                              child: _isReady
+                                  ? Stack(
+                                      fit: StackFit.expand,
+                                      children: [
+                                        VideoPlayer(_videoController!),
+                                        if (_wmPosition != WatermarkPosition.none)
+                                          Positioned(
+                                            top: (_wmPosition ==
+                                                        WatermarkPosition.topLeft ||
+                                                    _wmPosition ==
+                                                        WatermarkPosition.topRight)
+                                                ? 4
+                                                : null,
+                                            bottom: (_wmPosition ==
+                                                        WatermarkPosition.bottomLeft ||
+                                                    _wmPosition ==
+                                                        WatermarkPosition.bottomRight)
+                                                ? 4
+                                                : null,
+                                            left: (_wmPosition ==
+                                                        WatermarkPosition.topLeft ||
+                                                    _wmPosition ==
+                                                        WatermarkPosition.bottomLeft)
+                                                ? 4
+                                                : null,
+                                            right: (_wmPosition ==
+                                                        WatermarkPosition.topRight ||
+                                                    _wmPosition ==
+                                                        WatermarkPosition.bottomRight)
+                                                ? 4
+                                                : null,
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                  horizontal: 3, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: _wmTheme == WatermarkTheme.black
+                                                    ? Colors.black.withOpacity(0.6)
+                                                    : Colors.white.withOpacity(0.8),
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  ClipRRect(
+                                                    borderRadius:
+                                                        BorderRadius.circular(2),
+                                                    child: Image.asset(
+                                                      'assets/reposter.png',
+                                                      width: 8,
+                                                      height: 8,
+                                                      fit: BoxFit.cover,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 3),
+                                                  CircleAvatar(
+                                                    radius: 5,
+                                                    backgroundImage: widget
+                                                            .item
+                                                            .draft
+                                                            .authorProfileImageUrl
+                                                            .isNotEmpty
+                                                        ? NetworkImage(widget
+                                                            .item
+                                                            .draft
+                                                            .authorProfileImageUrl)
+                                                        : null,
+                                                    backgroundColor: Colors.grey[800],
+                                                    child: widget
+                                                            .item
+                                                            .draft
+                                                            .authorProfileImageUrl
+                                                            .isEmpty
+                                                        ? const Icon(Icons.person,
+                                                            size: 5, color: Colors.white)
+                                                        : null,
+                                                  ),
+                                                  const SizedBox(width: 3),
+                                                  Text(
+                                                    author.replaceFirst('@', ''),
+                                                    style: TextStyle(
+                                                      fontSize: 7,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: _wmTheme ==
+                                                              WatermarkTheme.black
+                                                          ? Colors.white
+                                                          : Colors.black,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
                                           ),
-                                          const SizedBox(width: 3),
-                                          CircleAvatar(
-                                            radius: 5,
-                                            backgroundImage: widget
-                                                    .item
-                                                    .draft
-                                                    .authorProfileImageUrl
-                                                    .isNotEmpty
-                                                ? NetworkImage(widget
-                                                    .item
-                                                    .draft
-                                                    .authorProfileImageUrl)
-                                                : null,
-                                            backgroundColor: Colors.grey[800],
-                                            child: widget
-                                                    .item
-                                                    .draft
-                                                    .authorProfileImageUrl
-                                                    .isEmpty
-                                                ? const Icon(Icons.person,
-                                                    size: 5, color: Colors.white)
-                                                : null,
-                                          ),
-                                          const SizedBox(width: 3),
-                                          Text(
-                                            author.replaceFirst('@', ''),
-                                            style: TextStyle(
-                                              fontSize: 7,
-                                              fontWeight: FontWeight.bold,
-                                              color: _wmTheme ==
-                                                      WatermarkTheme.black
-                                                  ? Colors.white
-                                                  : Colors.black,
+                                        GestureDetector(
+                                          onTap: () {
+                                            final controller = _videoController!;
+                                            if (controller.value.isPlaying) {
+                                              controller.pause();
+                                            } else {
+                                              controller.play();
+                                            }
+                                            setState(() {});
+                                          },
+                                          child: Container(
+                                            color: Colors.transparent,
+                                            child: Center(
+                                              child: Visibility(
+                                                visible:
+                                                    !_videoController!.value.isPlaying,
+                                                child: const Icon(
+                                                  Icons.play_arrow_rounded,
+                                                  color: Colors.white,
+                                                  size: 80,
+                                                ),
+                                              ),
                                             ),
                                           ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                GestureDetector(
-                                  onTap: () {
-                                    final controller = _videoController!;
-                                    if (controller.value.isPlaying) {
-                                      controller.pause();
-                                    } else {
-                                      controller.play();
-                                    }
-                                    setState(() {});
-                                  },
-                                  child: Container(
-                                    color: Colors.transparent,
-                                    child: Center(
-                                      child: Visibility(
-                                        visible:
-                                            !_videoController!.value.isPlaying,
-                                        child: const Icon(
-                                          Icons.play_arrow_rounded,
-                                          color: Colors.white,
-                                          size: 80,
                                         ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            )
-                          : const Center(child: CircularProgressIndicator()),
+                                      ],
+                                    )
+                                  : const Center(child: CircularProgressIndicator()),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              ),
+                    if (widget.item.draft.likes != null ||
+                        widget.item.draft.comments != null ||
+                        widget.item.draft.views != null) ...[
+                      const SizedBox(height: 18),
+                      Center(
+                        child: SizedBox(
+                          width: videoWidth,
+                          child: _StatsRow(draft: widget.item.draft),
+                        ),
+                      ),
+                    ],
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 18),
             Theme(
@@ -589,5 +623,93 @@ class _RepostDetailPageState extends State<RepostDetailPage> {
         ),
       ),
     );
+  }
+}
+
+class _StatsRow extends StatelessWidget {
+  final RepostDraft draft;
+
+  const _StatsRow({required this.draft});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          if (draft.likes != null)
+            _StatItem(
+              icon: Icons.favorite_border,
+              count: draft.likes!,
+              label: 'Likes',
+            ),
+          if (draft.comments != null)
+            _StatItem(
+              icon: Icons.chat_bubble_outline,
+              count: draft.comments!,
+              label: 'Comments',
+            ),
+          if (draft.views != null)
+            _StatItem(
+              icon: Icons.play_arrow_outlined,
+              count: draft.views!,
+              label: 'Views',
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatItem extends StatelessWidget {
+  final IconData icon;
+  final int count;
+  final String label;
+
+  const _StatItem(
+      {required this.icon, required this.count, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          icon,
+          size: 24,
+          color: theme.brightness == Brightness.dark
+              ? Colors.white
+              : Colors.black87,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          _formatNumber(count),
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          label.toUpperCase(),
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.brightness == Brightness.dark
+                ? Colors.white54
+                : Colors.black54,
+            fontSize: 9,
+            letterSpacing: 1.0,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatNumber(int number) {
+    if (number >= 1000000) {
+      return '${(number / 1000000).toStringAsFixed(1)}M';
+    } else if (number >= 1000) {
+      return '${(number / 1000).toStringAsFixed(1)}K';
+    }
+    return number.toString();
   }
 }

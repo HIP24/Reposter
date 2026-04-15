@@ -21,6 +21,22 @@ extension SocialPlatformX on SocialPlatform {
 enum WatermarkPosition { none, topLeft, topRight, bottomLeft, bottomRight }
 enum WatermarkTheme { black, white }
 
+int? _parseNumberWithSuffix(String text) {
+  final clean = text.replaceAll(',', '').toUpperCase().trim();
+  if (clean.endsWith('K')) {
+    final num = double.tryParse(clean.substring(0, clean.length - 1));
+    return num != null ? (num * 1000).toInt() : null;
+  } else if (clean.endsWith('M')) {
+    final num = double.tryParse(clean.substring(0, clean.length - 1));
+    return num != null ? (num * 1000000).toInt() : null;
+  } else if (clean.endsWith('B')) {
+    final num = double.tryParse(clean.substring(0, clean.length - 1));
+    return num != null ? (num * 1000000000).toInt() : null;
+  }
+  final d = double.tryParse(clean);
+  return d?.toInt();
+}
+
 class RepostDraft {
   const RepostDraft({
     required this.sourceUrl,
@@ -30,6 +46,9 @@ class RepostDraft {
     required this.author,
     required this.authorProfileImageUrl,
     required this.description,
+    this.likes,
+    this.comments,
+    this.views,
   });
 
   final Uri sourceUrl;
@@ -39,6 +58,9 @@ class RepostDraft {
   final String author;
   final String authorProfileImageUrl;
   final String description;
+  final int? likes;
+  final int? comments;
+  final int? views;
 
   String get authorHandle {
     if (author.isEmpty) return '';
@@ -116,6 +138,9 @@ class RepostService {
       author: metadata.author,
       authorProfileImageUrl: metadata.authorProfileImageUrl,
       description: metadata.description,
+      likes: metadata.likes,
+      comments: metadata.comments,
+      views: metadata.views,
     );
   }
 
@@ -189,6 +214,9 @@ class RepostService {
         author: author,
         authorProfileImageUrl: authorThumb,
         description: description,
+        likes: data['digg_count'] is int ? data['digg_count'] : int.tryParse(data['digg_count']?.toString() ?? ''),
+        comments: data['comment_count'] is int ? data['comment_count'] : int.tryParse(data['comment_count']?.toString() ?? ''),
+        views: data['play_count'] is int ? data['play_count'] : int.tryParse(data['play_count']?.toString() ?? ''),
       );
     } catch (_) {
       final html = await _fetchPageHtml(sourceUrl);
@@ -233,6 +261,10 @@ class RepostService {
       throw const FormatException('Could not find the Instagram post ID.');
     }
 
+    int? likes;
+    int? comments;
+    int? views;
+
     try {
       final ajaxUrl = Uri.https('www.instagram.com', '/p/$shortcode/', {
         '__a': '1',
@@ -266,6 +298,9 @@ class RepostService {
               author: media['user']?['username'] ?? media['owner']?['username'] ?? 'ig_user',
               authorProfileImageUrl: authorThumb ?? '',
               description: media['caption']?['text'] ?? media['edge_media_to_caption']?['edges']?[0]?['node']?['text'] ?? '',
+              likes: media['like_count'] ?? media['edge_media_preview_like']?['count'],
+              comments: media['comment_count'] ?? media['edge_media_to_comment']?['count'],
+              views: media['view_count'] ?? media['video_view_count'],
             );
           }
         }
@@ -349,12 +384,20 @@ class RepostService {
     // Step 4: Fallback to the reference URL if no high-res variant found
     cleanThumb ??= referenceUrl;
 
+    // --- Anchored Stats Extraction (Temporarily Disabled for Instagram) ---
+    final int? anchoredLikes = null;
+    final int? anchoredComments = null;
+    final int? anchoredViews = null;
+
     return _extractMetadata(
       html: postHtml,
       platform: SocialPlatform.instagram,
       providedVideoUrl: videoUrl,
       providedCaption: caption,
       providedThumbnailUrl: cleanThumb,
+      providedLikes: anchoredLikes,
+      providedComments: anchoredComments,
+      providedViews: anchoredViews,
     );
   }
 
@@ -364,6 +407,9 @@ class RepostService {
     String? providedVideoUrl,
     String? providedCaption,
     String? providedThumbnailUrl,
+    int? providedLikes,
+    int? providedComments,
+    int? providedViews,
   }) {
     final document = html_parser.parse(html);
 
@@ -473,12 +519,71 @@ class RepostService {
       _log('Warning: Found thumbnail but failed to extract profile pic.');
     }
 
+    final likes = providedLikes ??
+        (platform == SocialPlatform.tiktok
+            ? _parseNumberWithSuffix(_firstMatch(html, [
+                  RegExp(r'"edge_media_preview_like":\{"count":(\d+)\}'),
+                  RegExp(r'edge_media_preview_like\\":\{\\"count\\":(\d+)\\}'),
+                  RegExp(r'([0-9,.]+)\s+Likes'),
+                  RegExp(r'like_count\\":(\d+)'),
+                  RegExp(r'"like_count":(\d+)'),
+                  RegExp(r'"diggCount":(\d+)'),
+                  RegExp(r'digg_count\\":(\d+)'),
+                ]) ??
+                '')
+            : null);
+
+    final comments = providedComments ??
+        (platform == SocialPlatform.tiktok
+            ? _parseNumberWithSuffix(_firstMatch(html, [
+                  RegExp(r'"edge_media_to_comment":\{"count":(\d+)\}'),
+                  RegExp(r'edge_media_to_comment\\":\{\\"count\\":(\d+)\\}'),
+                  RegExp(r'([0-9,.]+)\s+Comments'),
+                  RegExp(r'comment_count\\":(\d+)'),
+                  RegExp(r'"comment_count":(\d+)'),
+                  RegExp(r'"commentCount":(\d+)'),
+                  RegExp(r'comment_count\\":(\d+)'),
+                ]) ??
+                '')
+            : null);
+
+    final views = providedViews ??
+        (platform == SocialPlatform.tiktok
+            ? _parseNumberWithSuffix(_firstMatch(html, [
+                  RegExp(r'"video_view_count":(\d+)'),
+                  RegExp(r'video_view_count\\":(\d+)'),
+                  RegExp(r'([0-9,.]+)\s+Views'),
+                  RegExp(r'play_count\\":(\d+)'),
+                  RegExp(r'"play_count":(\d+)'),
+                  RegExp(r'"playCount":(\d+)'),
+                ]) ??
+                '')
+            : null);
+
+    final finalAuthor = providedCaption?.isNotEmpty == true
+        ? _authorFromText(platform: platform, text: providedCaption!) ??
+            author
+        : author;
+
+    _log('Extracted Author: $finalAuthor');
+    _log('Extracted Profile Pic: $authorProfileImageUrl');
+    _log('Extracted Thumb: $thumbnailUrl');
+    if (description.isNotEmpty) {
+      _log('Extracted Caption: ${description.substring(0, description.length > 50 ? 50 : description.length)}...');
+    }
+    _log('Extracted Likes: $likes');
+    _log('Extracted Comments: $comments');
+    _log('Extracted Views: $views');
+
     return _ExtractedPost(
       videoUrl: videoUrl,
       thumbnailUrl: thumbnailUrl,
       description: description,
-      author: author,
+      author: finalAuthor,
       authorProfileImageUrl: authorProfileImageUrl,
+      likes: likes,
+      comments: comments,
+      views: views,
     );
   }
 
@@ -679,6 +784,9 @@ class _ExtractedPost {
     required this.description,
     required this.author,
     required this.authorProfileImageUrl,
+    this.likes,
+    this.comments,
+    this.views,
   });
 
   final String videoUrl;
@@ -686,6 +794,9 @@ class _ExtractedPost {
   final String description;
   final String author;
   final String authorProfileImageUrl;
+  final int? likes;
+  final int? comments;
+  final int? views;
 }
 
 /// Bridge for sharing videos to social media platforms

@@ -44,6 +44,9 @@ class HistoryItem {
         'authorProfileImageUrl': draft.authorProfileImageUrl,
         'editableDescription': editableDescription,
         'importedAt': importedAt.toIso8601String(),
+        'likes': draft.likes,
+        'comments': draft.comments,
+        'views': draft.views,
       };
 
   factory HistoryItem.fromJson(Map<String, dynamic> json) {
@@ -64,6 +67,9 @@ class HistoryItem {
         author: json['author'] as String? ?? '',
         authorProfileImageUrl: json['authorProfileImageUrl'] as String? ?? '',
         description: json['description'] as String? ?? '',
+        likes: json['likes'] as int?,
+        comments: json['comments'] as int?,
+        views: json['views'] as int?,
       ),
       editableDescription:
           json['editableDescription'] as String? ??
@@ -602,6 +608,31 @@ class HistoryPageState extends State<HistoryPage>
                                               : Colors.black87,
                                         ),
                                       ),
+                                      if (item.draft.likes != null ||
+                                          item.draft.comments != null ||
+                                          item.draft.views != null)
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 10),
+                                          child: Row(
+                                            children: [
+                                              if (item.draft.likes != null)
+                                                _StatItem(
+                                                  icon: Icons.favorite_border,
+                                                  count: item.draft.likes!,
+                                                ),
+                                              if (item.draft.comments != null)
+                                                _StatItem(
+                                                  icon: Icons.chat_bubble_outline,
+                                                  count: item.draft.comments!,
+                                                ),
+                                              if (item.draft.views != null)
+                                                _StatItem(
+                                                  icon: Icons.play_arrow_outlined,
+                                                  count: item.draft.views!,
+                                                ),
+                                            ],
+                                          ),
+                                        ),
                                     ],
                                   ),
                                 ),
@@ -766,5 +797,48 @@ class _LoadingSkeletonState extends State<_LoadingSkeleton>
         );
       },
     );
+  }
+}
+
+class _StatItem extends StatelessWidget {
+  final IconData icon;
+  final int count;
+
+  const _StatItem({required this.icon, required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = theme.brightness == Brightness.dark
+        ? Colors.white70
+        : Colors.black54;
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 12),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(
+            _formatNumber(count),
+            style: TextStyle(
+              fontSize: 12,
+              color: color,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatNumber(int number) {
+    if (number >= 1000000) {
+      return '${(number / 1000000).toStringAsFixed(1)}M';
+    } else if (number >= 1000) {
+      return '${(number / 1000).toStringAsFixed(1)}K';
+    }
+    return number.toString();
   }
 }
