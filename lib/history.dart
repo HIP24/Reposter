@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -93,7 +94,7 @@ class HistoryPageState extends State<HistoryPage>
     with WidgetsBindingObserver {
   static const _historyStorageKey = 'history_items_v1';
   static const double thumbWidth = 100.0;
-  static const double thumbHeight = 120.0; // Adjusted based on your latest change
+  static const double thumbHeight = 125.0; // Adjusted based on your latest change
   final _service = RepostService();
   final List<HistoryItem> _history = [];
   bool _isImporting = false;
@@ -305,7 +306,7 @@ class HistoryPageState extends State<HistoryPage>
 
   Future<void> _openItem(HistoryItem item) async {
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      CupertinoPageRoute(
         builder: (_) => RepostDetailPage(
           item: item,
           onDelete: () => _deleteItem(item, popDetail: true),
@@ -533,12 +534,35 @@ class HistoryPageState extends State<HistoryPage>
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _VideoThumb(
-                                  platform: item.draft.platform,
-                                  thumbnailUrl: item.draft.thumbnailUrl,
-                                  width: thumbWidth,
-                                  height: thumbHeight,
+                          Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              _VideoThumb(
+                                platform: item.draft.platform,
+                                thumbnailUrl: item.draft.thumbnailUrl,
+                                width: thumbWidth,
+                                height: thumbHeight,
+                              ),
+                              Positioned(
+                                right: 6,
+                                bottom: 6,
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.4),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Image.asset(
+                                    item.draft.platform == SocialPlatform.instagram
+                                        ? 'assets/social_media/instagram-dark.png'
+                                        : 'assets/social_media/tiktok-dark.png',
+                                    width: 12,
+                                    height: 12,
+                                  ),
                                 ),
+                              ),
+                            ],
+                          ),
                                 const SizedBox(width: 16),
                                 Expanded(
                                   child: SizedBox(
@@ -583,7 +607,7 @@ class HistoryPageState extends State<HistoryPage>
                                                         : null,
                                                   ),
                                                 ),
-                                                const SizedBox(width: 14),
+                                                const SizedBox(width: 8),
                                                 Expanded(
                                                   child: Row(
                                                     children: [
@@ -592,22 +616,19 @@ class HistoryPageState extends State<HistoryPage>
                                                           item.draft.authorHandle.isEmpty
                                                               ? 'unknown'
                                                               : item.draft.authorHandle.replaceFirst(RegExp(r'^@'), ''),
-                                                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                                                          style: (Platform.isIOS
+                                                              ? theme.textTheme.titleSmall
+                                                              : theme.textTheme.titleMedium)
+                                                                  ?.copyWith(
+                                                                fontWeight: FontWeight.bold,
+                                                                fontSize:
+                                                                    Platform.isIOS
+                                                                        ? 14
+                                                                        : null,
+                                                              ),
                                                           maxLines: 1,
                                                           overflow: TextOverflow.ellipsis,
                                                         ),
-                                                      ),
-                                                      const SizedBox(width: 8),
-                                                      Image.asset(
-                                                        item.draft.platform == SocialPlatform.instagram
-                                                            ? theme.brightness == Brightness.dark
-                                                                ? 'assets/social_media/instagram-dark.png'
-                                                                : 'assets/social_media/instagram-light.png'
-                                                            : theme.brightness == Brightness.dark
-                                                                ? 'assets/social_media/tiktok-dark.png'
-                                                                : 'assets/social_media/tiktok-light.png',
-                                                        width: 18,
-                                                        height: 18,
                                                       ),
                                                     ],
                                                   ),
@@ -623,7 +644,10 @@ class HistoryPageState extends State<HistoryPage>
                                               maxLines: 3,
                                               overflow: TextOverflow.ellipsis,
                                               style: theme.textTheme.bodyMedium?.copyWith(
-                                                color: theme.brightness == Brightness.dark ? Colors.white70 : Colors.black87,
+                                                color: theme.brightness == Brightness.dark
+                                                    ? Colors.white70
+                                                    : Colors.black87,
+                                                fontSize: Platform.isIOS ? 12 : null,
                                               ),
                                             ),
                                           ],
@@ -839,23 +863,25 @@ class _StatItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = theme.brightness == Brightness.dark
-        ? Colors.white70
-        : Colors.black54;
-
+    final iconSize = Platform.isIOS ? 12.0 : 14.0;
+    final fontSize = Platform.isIOS ? 10.0 : 11.0;
     return Padding(
-      padding: const EdgeInsets.only(right: 12),
+      padding: EdgeInsets.only(right: Platform.isIOS ? 12 : 16),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: color),
+          Icon(
+            icon,
+            size: iconSize,
+            color: theme.brightness == Brightness.dark ? Colors.white54 : Colors.black45,
+          ),
           const SizedBox(width: 4),
           Text(
             _formatNumber(count),
-            style: TextStyle(
-              fontSize: 12,
-              color: color,
-              fontWeight: FontWeight.w500,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.brightness == Brightness.dark ? Colors.white54 : Colors.black45,
+              fontWeight: FontWeight.bold,
+              fontSize: fontSize,
             ),
           ),
         ],
