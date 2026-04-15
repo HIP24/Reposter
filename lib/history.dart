@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'repost_service.dart';
 import 'reel_detail.dart';
@@ -496,41 +497,50 @@ class HistoryPageState extends State<HistoryPage>
                                     children: [
                                       Row(
                                         children: [
-                                          CircleAvatar(
-                                            radius: 16,
-                                            backgroundColor:
-                                                theme.brightness ==
-                                                        Brightness.dark
-                                                    ? const Color(0xFF332C3B)
-                                                    : const Color(0xFFE0E0E0),
-                                            backgroundImage: item
-                                                    .draft
-                                                    .authorProfileImageUrl
-                                                    .isNotEmpty
-                                                ? NetworkImage(item
-                                                    .draft
-                                                    .authorProfileImageUrl)
-                                                : null,
-                                            child: item
-                                                    .draft
-                                                    .authorProfileImageUrl
-                                                    .isEmpty
-                                                ? Text(
-                                                    item.draft.authorHandle
-                                                        .replaceFirst('@', '')
-                                                        .characters
-                                                        .take(1)
-                                                        .toString()
-                                                        .toUpperCase()
-                                                        .ifEmpty('R'),
-                                                    style: theme
-                                                        .textTheme.titleMedium
-                                                        ?.copyWith(
-                                                            fontWeight:
-                                                                FontWeight
-                                                                    .bold),
-                                                  )
-                                                : null,
+                                          GestureDetector(
+                                            onTap: () {
+                                              final handle = item.draft.authorHandle.replaceFirst(RegExp(r'^@'), '');
+                                              final profileUrl = item.draft.platform == SocialPlatform.instagram
+                                                  ? 'https://www.instagram.com/$handle/'
+                                                  : 'https://www.tiktok.com/@$handle';
+                                              launchUrl(Uri.parse(profileUrl), mode: LaunchMode.externalApplication);
+                                            },
+                                            child: CircleAvatar(
+                                              radius: 16,
+                                              backgroundColor:
+                                                  theme.brightness ==
+                                                          Brightness.dark
+                                                      ? const Color(0xFF332C3B)
+                                                      : const Color(0xFFE0E0E0),
+                                              backgroundImage: item
+                                                      .draft
+                                                      .authorProfileImageUrl
+                                                      .isNotEmpty
+                                                  ? NetworkImage(item
+                                                      .draft
+                                                      .authorProfileImageUrl)
+                                                  : null,
+                                              child: item
+                                                      .draft
+                                                      .authorProfileImageUrl
+                                                      .isEmpty
+                                                  ? Text(
+                                                      item.draft.authorHandle
+                                                          .replaceFirst('@', '')
+                                                          .characters
+                                                          .take(1)
+                                                          .toString()
+                                                          .toUpperCase()
+                                                          .ifEmpty('R'),
+                                                      style: theme
+                                                          .textTheme.titleMedium
+                                                          ?.copyWith(
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold),
+                                                    )
+                                                  : null,
+                                            ),
                                           ),
                                           const SizedBox(width: 14),
                                           Expanded(

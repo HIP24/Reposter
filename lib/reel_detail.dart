@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import 'repost_service.dart';
@@ -150,6 +151,26 @@ class _RepostDetailPageState extends State<RepostDetailPage> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Open in ${widget.item.draft.platform.label}',
+            onPressed: () {
+              launchUrl(
+                widget.item.draft.sourceUrl,
+                mode: LaunchMode.externalApplication,
+              );
+            },
+            icon: Image.asset(
+              widget.item.draft.platform == SocialPlatform.instagram
+                  ? theme.brightness == Brightness.dark
+                      ? 'assets/social_media/instagram-dark.png'
+                      : 'assets/social_media/instagram-light.png'
+                  : theme.brightness == Brightness.dark
+                      ? 'assets/social_media/tiktok-dark.png'
+                      : 'assets/social_media/tiktok-light.png',
+              width: 22,
+              height: 22,
+            ),
+          ),
           IconButton(
             tooltip: 'Share',
             onPressed: _shareGeneric,
