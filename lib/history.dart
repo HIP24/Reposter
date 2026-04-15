@@ -92,12 +92,36 @@ class HistoryPage extends StatefulWidget {
 class HistoryPageState extends State<HistoryPage>
     with WidgetsBindingObserver {
   static const _historyStorageKey = 'history_items_v1';
+  static const double thumbWidth = 100.0;
+  static const double thumbHeight = 120.0; // Adjusted based on your latest change
   final _service = RepostService();
   final List<HistoryItem> _history = [];
   bool _isImporting = false;
   double _importProgress = 0;
   Timer? _clipboardTimer;
   String? _lastClipboardText;
+
+  Set<SocialPlatform> _activePlatforms = {
+    SocialPlatform.instagram,
+    SocialPlatform.tiktok
+  };
+
+  void togglePlatform(SocialPlatform platform) {
+    setState(() {
+      if (_activePlatforms.contains(platform)) {
+        _activePlatforms.remove(platform);
+      } else {
+        _activePlatforms.add(platform);
+      }
+    });
+  }
+
+  bool isPlatformActive(SocialPlatform platform) =>
+      _activePlatforms.contains(platform);
+
+  List<HistoryItem> get _filteredHistory => _history
+      .where((item) => _activePlatforms.contains(item.draft.platform))
+      .toList();
 
   List<HistoryItem> get history => _history;
 
@@ -300,27 +324,35 @@ class HistoryPageState extends State<HistoryPage>
   Future<void> _deleteItem(HistoryItem item, {bool popDetail = false}) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF222028),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Delete Post?'),
-        content: const Text(
-          'This will permanently remove this video from your history.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white)),
+      builder: (context) {
+        final theme = Theme.of(context);
+        final isDark = theme.brightness == Brightness.dark;
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF222028) : Colors.white,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text('Delete Post?',
+              style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+          content: Text(
+            'This will permanently remove this video from your history.',
+            style: TextStyle(color: isDark ? Colors.white70 : Colors.black87),
           ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: Color(0xFFFF4B4B)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text('Cancel',
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
             ),
-          ),
-        ],
-      ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text(
+                'Delete',
+                style: TextStyle(color: Color(0xFFFF4B4B)),
+              ),
+            ),
+          ],
+        );
+      },
     );
 
     if (confirmed == true) {
@@ -345,27 +377,35 @@ class HistoryPageState extends State<HistoryPage>
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF222028),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Delete All?'),
-        content: Text(
-          'This will permanently remove all ${_history.length} videos from your history.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white)),
+      builder: (context) {
+        final theme = Theme.of(context);
+        final isDark = theme.brightness == Brightness.dark;
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF222028) : Colors.white,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text('Delete All?',
+              style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+          content: Text(
+            'This will permanently remove all ${_history.length} videos from your history.',
+            style: TextStyle(color: isDark ? Colors.white70 : Colors.black87),
           ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text(
-              'Delete All',
-              style: TextStyle(color: Color(0xFFFF4B4B)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text('Cancel',
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
             ),
-          ),
-        ],
-      ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text(
+                'Delete All',
+                style: TextStyle(color: Color(0xFFFF4B4B)),
+              ),
+            ),
+          ],
+        );
+      },
     );
 
     if (confirmed == true) {
@@ -471,14 +511,17 @@ class HistoryPageState extends State<HistoryPage>
                 )
               : ListView.separated(
                   padding: const EdgeInsets.only(bottom: 24),
-                  itemCount: _history.length + (_isImporting ? 1 : 0),
-                  separatorBuilder: (_, __) =>
-                      const Divider(height: 1, color: Colors.white12),
+                  itemCount: _filteredHistory.length + (_isImporting ? 1 : 0),
+                  separatorBuilder: (_, __) => Divider(
+                      height: 1,
+                      color: theme.brightness == Brightness.dark
+                          ? Colors.white12
+                          : Colors.black12),
                   itemBuilder: (context, index) {
                     if (_isImporting && index == 0) {
                       return const _LoadingSkeleton();
                     }
-                    final item = _history[_isImporting ? index - 1 : index];
+                    final item = _filteredHistory[_isImporting ? index - 1 : index];
                     return InkWell(
                       onTap: () => _openItem(item),
                       onLongPress: () => _deleteItem(item),
@@ -486,154 +529,134 @@ class HistoryPageState extends State<HistoryPage>
                       child: Stack(
                         children: [
                           Padding(
-                            padding:
-                                const EdgeInsets.fromLTRB(22, 18, 22, 18),
+                            padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 _VideoThumb(
                                   platform: item.draft.platform,
                                   thumbnailUrl: item.draft.thumbnailUrl,
+                                  width: thumbWidth,
+                                  height: thumbHeight,
                                 ),
                                 const SizedBox(width: 16),
                                 Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          GestureDetector(
-                                            onTap: () {
-                                              final handle = item.draft.authorHandle.replaceFirst(RegExp(r'^@'), '');
-                                              final profileUrl = item.draft.platform == SocialPlatform.instagram
-                                                  ? 'https://www.instagram.com/$handle/'
-                                                  : 'https://www.tiktok.com/@$handle';
-                                              launchUrl(Uri.parse(profileUrl), mode: LaunchMode.externalApplication);
-                                            },
-                                            child: CircleAvatar(
-                                              radius: 16,
-                                              backgroundColor:
-                                                  theme.brightness ==
-                                                          Brightness.dark
-                                                      ? const Color(0xFF332C3B)
-                                                      : const Color(0xFFE0E0E0),
-                                              backgroundImage: item
-                                                      .draft
-                                                      .authorProfileImageUrl
-                                                      .isNotEmpty
-                                                  ? NetworkImage(item
-                                                      .draft
-                                                      .authorProfileImageUrl)
-                                                  : null,
-                                              child: item
-                                                      .draft
-                                                      .authorProfileImageUrl
-                                                      .isEmpty
-                                                  ? Text(
-                                                      item.draft.authorHandle
-                                                          .replaceFirst('@', '')
-                                                          .characters
-                                                          .take(1)
-                                                          .toString()
-                                                          .toUpperCase()
-                                                          .ifEmpty('R'),
-                                                      style: theme
-                                                          .textTheme.titleMedium
-                                                          ?.copyWith(
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .bold),
-                                                    )
-                                                  : null,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 14),
-                                          Expanded(
-                                            child: Row(
+                                  child: SizedBox(
+                                    height: thumbHeight,
+                                    child: Stack(
+                                      children: [
+                                        // Top & Middle items
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            // Top section (Profile)
+                                            Row(
                                               children: [
-                                                Flexible(
-                                                  child: Text(
-                                                    item.draft.authorHandle
-                                                            .isEmpty
-                                                        ? 'unknown'
-                                                        : item.draft.authorHandle
-                                                            .replaceFirst(
-                                                                RegExp(r'^@'),
-                                                                ''),
-                                                    style: theme
-                                                        .textTheme.titleMedium
-                                                        ?.copyWith(
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                    ),
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
+                                                GestureDetector(
+                                                  onTap: () {
+                                                    final handle = item.draft.authorHandle.replaceFirst(RegExp(r'^@'), '');
+                                                    final profileUrl = item.draft.platform == SocialPlatform.instagram
+                                                        ? 'https://www.instagram.com/$handle/'
+                                                        : 'https://www.tiktok.com/@$handle';
+                                                    launchUrl(Uri.parse(profileUrl), mode: LaunchMode.externalApplication);
+                                                  },
+                                                  child: CircleAvatar(
+                                                    radius: 16,
+                                                    backgroundColor:
+                                                        theme.brightness == Brightness.dark
+                                                            ? const Color(0xFF332C3B)
+                                                            : const Color(0xFFE0E0E0),
+                                                    backgroundImage: item.draft.authorProfileImageUrl.isNotEmpty
+                                                        ? NetworkImage(item.draft.authorProfileImageUrl)
+                                                        : null,
+                                                    child: item.draft.authorProfileImageUrl.isEmpty
+                                                        ? Text(
+                                                            item.draft.authorHandle
+                                                                .replaceFirst('@', '')
+                                                                .characters
+                                                                .take(1)
+                                                                .toString()
+                                                                .toUpperCase()
+                                                                .ifEmpty('R'),
+                                                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                                                          )
+                                                        : null,
                                                   ),
                                                 ),
-                                                const SizedBox(width: 8),
-                                                Image.asset(
-                                                  item.draft.platform ==
-                                                          SocialPlatform
-                                                              .instagram
-                                                      ? theme.brightness ==
-                                                              Brightness.dark
-                                                          ? 'assets/social_media/instagram-dark.png'
-                                                          : 'assets/social_media/instagram-light.png'
-                                                      : theme.brightness ==
-                                                              Brightness.dark
-                                                          ? 'assets/social_media/tiktok-dark.png'
-                                                          : 'assets/social_media/tiktok-light.png',
-                                                  width: 18,
-                                                  height: 18,
+                                                const SizedBox(width: 14),
+                                                Expanded(
+                                                  child: Row(
+                                                    children: [
+                                                      Flexible(
+                                                        child: Text(
+                                                          item.draft.authorHandle.isEmpty
+                                                              ? 'unknown'
+                                                              : item.draft.authorHandle.replaceFirst(RegExp(r'^@'), ''),
+                                                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow.ellipsis,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 8),
+                                                      Image.asset(
+                                                        item.draft.platform == SocialPlatform.instagram
+                                                            ? theme.brightness == Brightness.dark
+                                                                ? 'assets/social_media/instagram-dark.png'
+                                                                : 'assets/social_media/instagram-light.png'
+                                                            : theme.brightness == Brightness.dark
+                                                                ? 'assets/social_media/tiktok-dark.png'
+                                                                : 'assets/social_media/tiktok-light.png',
+                                                        width: 18,
+                                                        height: 18,
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
                                               ],
                                             ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Text(
-                                        item.editableDescription.isEmpty
-                                            ? ''
-                                            : item.editableDescription,
-                                        maxLines: 3,
-                                        overflow: TextOverflow.ellipsis,
-                                        style:
-                                            theme.textTheme.bodyMedium?.copyWith(
-                                          color: theme.brightness ==
-                                                  Brightness.dark
-                                              ? Colors.white70
-                                              : Colors.black87,
+                                            
+                                            const SizedBox(height: 4),
+
+                                            // Middle section (Description)
+                                            Text(
+                                              item.editableDescription.isEmpty ? '' : item.editableDescription,
+                                              maxLines: 3,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: theme.textTheme.bodyMedium?.copyWith(
+                                                color: theme.brightness == Brightness.dark ? Colors.white70 : Colors.black87,
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      ),
-                                      if (item.draft.likes != null ||
-                                          item.draft.comments != null ||
-                                          item.draft.views != null)
-                                        Padding(
-                                          padding: const EdgeInsets.only(top: 10),
-                                          child: Row(
-                                            children: [
-                                              if (item.draft.likes != null)
-                                                _StatItem(
-                                                  icon: Icons.favorite_border,
-                                                  count: item.draft.likes!,
-                                                ),
-                                              if (item.draft.comments != null)
-                                                _StatItem(
-                                                  icon: Icons.chat_bubble_outline,
-                                                  count: item.draft.comments!,
-                                                ),
-                                              if (item.draft.views != null)
-                                                _StatItem(
-                                                  icon: Icons.play_arrow_outlined,
-                                                  count: item.draft.views!,
-                                                ),
-                                            ],
+
+                                        // Bottom section (Stats)
+                                        if (item.draft.likes != null || item.draft.comments != null || item.draft.views != null)
+                                          Positioned(
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0,
+                                            child: Row(
+                                              children: [
+                                                if (item.draft.likes != null)
+                                                  _StatItem(
+                                                    icon: Icons.favorite_border,
+                                                    count: item.draft.likes!,
+                                                  ),
+                                                if (item.draft.comments != null)
+                                                  _StatItem(
+                                                    icon: Icons.chat_bubble_outline,
+                                                    count: item.draft.comments!,
+                                                  ),
+                                                if (item.draft.views != null)
+                                                  _StatItem(
+                                                    icon: Icons.play_arrow_outlined,
+                                                    count: item.draft.views!,
+                                                  ),
+                                              ],
+                                            ),
                                           ),
-                                        ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ],
@@ -651,17 +674,24 @@ class HistoryPageState extends State<HistoryPage>
 }
 
 class _VideoThumb extends StatelessWidget {
-  const _VideoThumb({required this.platform, required this.thumbnailUrl});
+  const _VideoThumb({
+    required this.platform,
+    required this.thumbnailUrl,
+    required this.width,
+    required this.height,
+  });
 
   final SocialPlatform platform;
   final String thumbnailUrl;
+  final double width;
+  final double height;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      width: 100,
-      height: 125,
+      width: width,
+      height: height,
       decoration: BoxDecoration(
         color: theme.brightness == Brightness.dark
             ? const Color(0xFF222028)
