@@ -654,31 +654,29 @@ class HistoryPageState extends State<HistoryPage>
                                         ),
 
                                         // Bottom section (Stats)
-                                        if (item.draft.likes != null || item.draft.comments != null || item.draft.views != null)
-                                          Positioned(
-                                            bottom: 0,
-                                            left: 0,
-                                            right: 0,
-                                            child: Row(
-                                              children: [
-                                                if (item.draft.likes != null)
-                                                  _StatItem(
-                                                    icon: Icons.favorite_border,
-                                                    count: item.draft.likes!,
-                                                  ),
-                                                if (item.draft.comments != null)
-                                                  _StatItem(
-                                                    icon: Icons.chat_bubble_outline,
-                                                    count: item.draft.comments!,
-                                                  ),
-                                                if (item.draft.views != null)
-                                                  _StatItem(
-                                                    icon: Icons.play_arrow_outlined,
-                                                    count: item.draft.views!,
-                                                  ),
-                                              ],
-                                            ),
+                                        Positioned(
+                                          bottom: 0,
+                                          left: 0,
+                                          right: 0,
+                                          child: Row(
+                                            children: [
+                                              _StatItem(
+                                                icon: Icons.favorite_border,
+                                                count: _formatNumber(item.draft.likes),
+                                              ),
+                                              _StatItem(
+                                                icon: Icons.chat_bubble_outline,
+                                                count: _formatNumber(item.draft.comments),
+                                              ),
+                                              _StatItem(
+                                                icon: Icons.play_arrow_outlined,
+                                                count: item.draft.platform == SocialPlatform.instagram
+                                                    ? (item.draft.views != null ? _formatNumber(item.draft.views!) : '-')
+                                                    : _formatNumber(item.draft.views),
+                                              ),
+                                            ],
                                           ),
+                                        ),
                                       ],
                                     ),
                                   ),
@@ -856,7 +854,7 @@ class _LoadingSkeletonState extends State<_LoadingSkeleton>
 
 class _StatItem extends StatelessWidget {
   final IconData icon;
-  final int count;
+  final String count;
 
   const _StatItem({required this.icon, required this.count});
 
@@ -865,8 +863,9 @@ class _StatItem extends StatelessWidget {
     final theme = Theme.of(context);
     final iconSize = Platform.isIOS ? 12.0 : 14.0;
     final fontSize = Platform.isIOS ? 10.0 : 11.0;
-    return Padding(
-      padding: EdgeInsets.only(right: Platform.isIOS ? 12 : 16),
+    
+    return SizedBox(
+      width: Platform.isIOS ? 55 : 65, // Fixed width for alignment
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -877,7 +876,7 @@ class _StatItem extends StatelessWidget {
           ),
           const SizedBox(width: 4),
           Text(
-            _formatNumber(count),
+            count,
             style: theme.textTheme.labelSmall?.copyWith(
               color: theme.brightness == Brightness.dark ? Colors.white54 : Colors.black45,
               fontWeight: FontWeight.bold,
@@ -888,13 +887,14 @@ class _StatItem extends StatelessWidget {
       ),
     );
   }
+}
 
-  String _formatNumber(int number) {
-    if (number >= 1000000) {
-      return '${(number / 1000000).toStringAsFixed(1)}M';
-    } else if (number >= 1000) {
-      return '${(number / 1000).toStringAsFixed(1)}K';
-    }
-    return number.toString();
+String _formatNumber(int? number) {
+  if (number == null) return '0';
+  if (number >= 1000000) {
+    return '${(number / 1000000).toStringAsFixed(1)}M';
+  } else if (number >= 1000) {
+    return '${(number / 1000).toStringAsFixed(1)}K';
   }
+  return number.toString();
 }

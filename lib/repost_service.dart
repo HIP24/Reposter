@@ -154,11 +154,7 @@ class RepostService {
 
     final withScheme = trimmed.startsWith('http') ? trimmed : 'https://$trimmed';
     final uri = Uri.tryParse(withScheme);
-    if (uri == null || uri.host.isEmpty) {
-      throw const FormatException('That does not look like a valid URL.');
-    }
-
-    return uri;
+    return uri ?? Uri.parse(withScheme);
   }
 
   SocialPlatform? _detectPlatform(Uri uri) {
@@ -520,45 +516,40 @@ class RepostService {
     }
 
     final likes = providedLikes ??
-        (platform == SocialPlatform.tiktok
-            ? _parseNumberWithSuffix(_firstMatch(html, [
-                  RegExp(r'"edge_media_preview_like":\{"count":(\d+)\}'),
-                  RegExp(r'edge_media_preview_like\\":\{\\"count\\":(\d+)\\}'),
-                  RegExp(r'([0-9,.]+)\s+Likes'),
-                  RegExp(r'like_count\\":(\d+)'),
-                  RegExp(r'"like_count":(\d+)'),
-                  RegExp(r'"diggCount":(\d+)'),
-                  RegExp(r'digg_count\\":(\d+)'),
-                ]) ??
-                '')
-            : null);
+        _parseNumberWithSuffix(_firstMatch(html, [
+          RegExp(r'"edge_media_preview_like":\{"count":(\d+)\}'),
+          RegExp(r'edge_media_preview_like\\":\{\\"count\\":(\d+)\\}'),
+          RegExp(r'([0-9,.]+K?M?B?)\s+Likes', caseSensitive: false),
+          RegExp(r'like_count\\":(\d+)'),
+          RegExp(r'"like_count":(\d+)'),
+          RegExp(r'"diggCount":(\d+)'),
+          RegExp(r'digg_count\\":(\d+)'),
+        ]) ?? '') ?? 
+        _statsFromMeta(html: html, labelPattern: 'likes');
 
     final comments = providedComments ??
-        (platform == SocialPlatform.tiktok
-            ? _parseNumberWithSuffix(_firstMatch(html, [
-                  RegExp(r'"edge_media_to_comment":\{"count":(\d+)\}'),
-                  RegExp(r'edge_media_to_comment\\":\{\\"count\\":(\d+)\\}'),
-                  RegExp(r'([0-9,.]+)\s+Comments'),
-                  RegExp(r'comment_count\\":(\d+)'),
-                  RegExp(r'"comment_count":(\d+)'),
-                  RegExp(r'"commentCount":(\d+)'),
-                  RegExp(r'comment_count\\":(\d+)'),
-                ]) ??
-                '')
-            : null);
+        _parseNumberWithSuffix(_firstMatch(html, [
+          RegExp(r'"edge_media_to_comment":\{"count":(\d+)\}'),
+          RegExp(r'edge_media_to_comment\\":\{\\"count\\":(\d+)\\}'),
+          RegExp(r'([0-9,.]+K?M?B?)\s+Comments', caseSensitive: false),
+          RegExp(r'comment_count\\":(\d+)'),
+          RegExp(r'"comment_count":(\d+)'),
+          RegExp(r'"commentCount":(\d+)'),
+          RegExp(r'comment_count\\":(\d+)'),
+        ]) ?? '') ??
+        _statsFromMeta(html: html, labelPattern: 'comments');
 
     final views = providedViews ??
-        (platform == SocialPlatform.tiktok
-            ? _parseNumberWithSuffix(_firstMatch(html, [
-                  RegExp(r'"video_view_count":(\d+)'),
-                  RegExp(r'video_view_count\\":(\d+)'),
-                  RegExp(r'([0-9,.]+)\s+Views'),
-                  RegExp(r'play_count\\":(\d+)'),
-                  RegExp(r'"play_count":(\d+)'),
-                  RegExp(r'"playCount":(\d+)'),
-                ]) ??
-                '')
-            : null);
+        _parseNumberWithSuffix(_firstMatch(html, [
+          RegExp(r'"video_view_count":(\d+)'),
+          RegExp(r'video_view_count\\":(\d+)'),
+          RegExp(r'([0-9,.]+K?M?B?)\s+Views', caseSensitive: false),
+          RegExp(r'([0-9,.]+K?M?B?)\s+Plays', caseSensitive: false),
+          RegExp(r'play_count\\":(\d+)'),
+          RegExp(r'"play_count":(\d+)'),
+          RegExp(r'"playCount":(\d+)'),
+        ]) ?? '') ??
+        _statsFromMeta(html: html, labelPattern: r'(?:views|plays)');
 
     final finalAuthor = author;
 
@@ -600,6 +591,13 @@ class RepostService {
         // Pattern 3: "138 likes, 6 comments - handle on April 15, 2026" (common in og:description)
         final descMatch = RegExp(r'(?:Likes|Comments)\s+-\s+([A-Za-z0-9._]+)\s+on\s+').firstMatch(text);
         if (descMatch != null) return descMatch.group(1);
+
+        // Pattern 4: meta name="author" content="handle"
+        final authorMeta = RegExp(r'''<meta[^>]*name=["\']author["\'][^>]*content=["\']([^"\']+)["\']''').firstMatch(text);
+        if (authorMeta != null) {
+           final val = authorMeta.group(1)!;
+           if (!val.contains(' ')) return val; // Likely a handle if no spaces
+        }
         break;
 
       case SocialPlatform.tiktok:
@@ -612,6 +610,45 @@ class RepostService {
     // But don't just grab any @mention from a long caption.
     final handleMatch = RegExp(r'^@([A-Za-z0-9._]+)$').firstMatch(text.trim());
     if (handleMatch != null) return handleMatch.group(1);
+
+    return null;
+  }
+
+  /// Extracts numeric stats (likes, comments, views) from DOM aria-labels and Meta tags
+  int? _statsFromMeta({required String html, required String labelPattern}) {
+    final document = html_parser.parse(html);
+
+    // 1. Try DOM attributes (Aria-labels)
+    final elements = document.querySelectorAll('*[aria-label]');
+    for (final el in elements) {
+      final ariaLabel = el.attributes['aria-label'] ?? '';
+      final match = RegExp('([0-9,.]+K?M?B?)\\s+$labelPattern', caseSensitive: false)
+          .firstMatch(ariaLabel);
+      if (match != null) return _parseNumberWithSuffix(match.group(1)!);
+    }
+
+    // 2. Try Meta tags fallback
+    final selectors = [
+      'meta[property="og:description"]',
+      'meta[name="description"]',
+      'meta[property="og:title"]',
+      'meta[name="title"]',
+    ];
+
+    for (final selector in selectors) {
+      final el = document.querySelector(selector);
+      final content = el?.attributes['content'] ?? '';
+      if (content.isNotEmpty) {
+        final match = RegExp('([0-9,.]+K?M?B?)\\s+$labelPattern', caseSensitive: false)
+            .firstMatch(content);
+        if (match != null) return _parseNumberWithSuffix(match.group(1)!);
+      }
+    }
+
+    // 3. Last resort: Greedy text search in whole HTML
+    final greedyMatch = RegExp('([0-9,.]+K?M?B?)\\s+$labelPattern', caseSensitive: false)
+        .firstMatch(html);
+    if (greedyMatch != null) return _parseNumberWithSuffix(greedyMatch.group(1)!);
 
     return null;
   }
