@@ -96,6 +96,47 @@ class RepostService {
     'Upgrade-Insecure-Requests': '1',
   };
 
+  Future<String> resolveCanonicalUrl(String rawUrl) async {
+    try {
+      final uri = _normalizeUrl(rawUrl);
+      final platform = _detectPlatform(uri);
+      
+      if (platform == SocialPlatform.tiktok) {
+        if (uri.host.contains('vm.tiktok.com') || uri.host.contains('vt.tiktok.com')) {
+          final request = http.Request('HEAD', uri)..followRedirects = false;
+          final response = await http.Client().send(request);
+          if (response.isRedirect && response.headers['location'] != null) {
+            final redirectedUrl = Uri.parse(response.headers['location']!);
+            return redirectedUrl.toString().split('?').first;
+          }
+        }
+        return uri.toString().split('?').first;
+      } else if (platform == SocialPlatform.instagram) {
+        if (uri.host.contains('instagr.am')) {
+           final request = http.Request('HEAD', uri)..followRedirects = false;
+           final response = await http.Client().send(request);
+           if (response.isRedirect && response.headers['location'] != null) {
+             final redirectedUrl = Uri.parse(response.headers['location']!);
+             return redirectedUrl.toString().split('?').first;
+           }
+        }
+        final patterns = [
+          RegExp(r'/(?:p|reel|reels)/([^/?#&]+)'),
+        ];
+        for (final pattern in patterns) {
+          final match = pattern.firstMatch(uri.path);
+          if (match != null) {
+            return 'https://www.instagram.com/reel/${match.group(1)}/';
+          }
+        }
+        return uri.toString().split('?').first;
+      }
+      return uri.toString().split('?').first;
+    } catch (_) {
+      return rawUrl.split('?').first;
+    }
+  }
+
   Future<RepostDraft> importPost(
     String rawUrl, {
     void Function(double)? onProgress,

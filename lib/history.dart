@@ -97,15 +97,25 @@ class HistoryPageState extends State<HistoryPage>
   static const double thumbHeight = 125.0; // Adjusted based on your latest change
   final _service = RepostService();
   final List<HistoryItem> _history = [];
+  List<HistoryItem> _cachedFilteredHistory = [];
   bool _isImporting = false;
   double _importProgress = 0;
   Timer? _clipboardTimer;
   String? _lastClipboardText;
+  String? _highlightedItemId;
+  Timer? _highlightTimer;
+  final ScrollController _scrollController = ScrollController();
 
   Set<SocialPlatform> _activePlatforms = {
     SocialPlatform.instagram,
     SocialPlatform.tiktok
   };
+
+  void _updateFilteredHistory() {
+    _cachedFilteredHistory = _history
+        .where((item) => _activePlatforms.contains(item.draft.platform))
+        .toList();
+  }
 
   void togglePlatform(SocialPlatform platform) {
     setState(() {
@@ -114,23 +124,33 @@ class HistoryPageState extends State<HistoryPage>
       } else {
         _activePlatforms.add(platform);
       }
+      _updateFilteredHistory();
     });
   }
 
   bool isPlatformActive(SocialPlatform platform) =>
       _activePlatforms.contains(platform);
 
-  List<HistoryItem> get _filteredHistory => _history
-      .where((item) => _activePlatforms.contains(item.draft.platform))
-      .toList();
+  List<HistoryItem> get _filteredHistory => _cachedFilteredHistory;
 
   List<HistoryItem> get history => _history;
+
+  bool _isInitialized = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _restoreHistory();
+    _initializeData();
+  }
+
+  Future<void> _initializeData() async {
+    await _restoreHistory();
+    if (mounted) {
+      setState(() {
+        _isInitialized = true;
+      });
+    }
     _startClipboardWatcher();
   }
 
@@ -138,6 +158,8 @@ class HistoryPageState extends State<HistoryPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _clipboardTimer?.cancel();
+    _highlightTimer?.cancel();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -194,17 +216,20 @@ class HistoryPageState extends State<HistoryPage>
       normalizedClipboard = normalizedClipboard.substring(0, normalizedClipboard.length - 1);
     }
 
-    final existsInHistory = _history.any((item) {
+    HistoryItem? existingItem;
+    for (final item in _history) {
       String url = item.draft.sourceUrl.toString().split('?').first;
-      if (url.endsWith('/')) {
-        url = url.substring(0, url.length - 1);
+      if (url.endsWith('/')) url = url.substring(0, url.length - 1);
+      if (url == normalizedClipboard) {
+        existingItem = item;
+        break;
       }
-      return url == normalizedClipboard;
-    });
+    }
 
-    if (existsInHistory) {
+    if (existingItem != null) {
       _lastClipboardText = text;
       if (kDebugMode) print('[UI] URL already in history, skipping: $normalizedClipboard');
+      _flashHighlight(existingItem.id);
       return;
     }
 
@@ -220,30 +245,26 @@ class HistoryPageState extends State<HistoryPage>
     final cleanUrl = url.trim();
     if (cleanUrl.isEmpty) return;
 
-    // Check for duplicates BEFORE showing skeleton
-    String normalizedCleanUrl = cleanUrl.split('?').first;
-    if (normalizedCleanUrl.endsWith('/')) {
-      normalizedCleanUrl = normalizedCleanUrl.substring(0, normalizedCleanUrl.length - 1);
-    }
+    // Resolve canonical URL to reliably catch TikTok shortlinks (vm.tiktok) or Instagram variants
+    final canonicalUrl = await _service.resolveCanonicalUrl(cleanUrl);
 
     final existingIndex = _history.indexWhere((item) {
-      String url = item.draft.sourceUrl.toString().split('?').first;
-      if (url.endsWith('/')) {
-        url = url.substring(0, url.length - 1);
-      }
-      return url == normalizedCleanUrl;
+      return item.draft.sourceUrl == canonicalUrl || 
+             item.draft.sourceUrl.toString().split('?').first.replaceAll(RegExp(r'/$'), '') == canonicalUrl.replaceAll(RegExp(r'/$'), '');
     });
 
     if (existingIndex != -1) {
       final existingItem = _history[existingIndex];
       if (await File(existingItem.draft.videoPath).exists()) {
         if (kDebugMode)
-          print('[UI] Reusing existing video for: ${existingItem.draft.sourceUrl}');
+          print('[UI] Reusing existing video for: $canonicalUrl');
         setState(() {
           _history.removeAt(existingIndex);
           _history.insert(0, existingItem);
+          _updateFilteredHistory();
         });
         await _persistHistory();
+        _flashHighlight(existingItem.id);
         return;
       }
     }
@@ -252,6 +273,16 @@ class HistoryPageState extends State<HistoryPage>
     setState(() {
       _isImporting = true;
       _importProgress = 0;
+    });
+    // Scroll to top immediately so the skeleton at index 0 is visible
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeOutCubic,
+        );
+      }
     });
 
     try {
@@ -283,10 +314,19 @@ class HistoryPageState extends State<HistoryPage>
           (entry) => entry.draft.sourceUrl == draft.sourceUrl,
         );
         _history.insert(0, item);
+        _updateFilteredHistory();
       });
       if (kDebugMode)
         print('[UI] History updated. Author: ${item.draft.author}');
       await _persistHistory();
+      // Scroll to top so the new reel is visible
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 450),
+          curve: Curves.easeOutCubic,
+        );
+      }
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -302,6 +342,27 @@ class HistoryPageState extends State<HistoryPage>
         });
       }
     }
+  }
+
+  void _flashHighlight(String itemId) {
+    if (!mounted) return;
+    _highlightTimer?.cancel();
+    setState(() => _highlightedItemId = itemId);
+
+    // Scroll to the item so the user can see it
+    final index = _filteredHistory.indexWhere((e) => e.id == itemId);
+    if (index != -1 && _scrollController.hasClients) {
+      final itemOffset = index * (thumbHeight + 36 + 1); // height + padding + divider
+      _scrollController.animateTo(
+        itemOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeOutCubic,
+      );
+    }
+
+    _highlightTimer = Timer(const Duration(milliseconds: 1800), () {
+      if (mounted) setState(() => _highlightedItemId = null);
+    });
   }
 
   Future<void> _openItem(HistoryItem item) async {
@@ -322,7 +383,7 @@ class HistoryPageState extends State<HistoryPage>
     );
   }
 
-  Future<void> _deleteItem(HistoryItem item, {bool popDetail = false}) async {
+  Future<bool> _confirmDeleteModal() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -355,21 +416,29 @@ class HistoryPageState extends State<HistoryPage>
         );
       },
     );
+    return confirmed == true;
+  }
 
-    if (confirmed == true) {
-      setState(() {
-        _history.removeWhere((entry) => entry.id == item.id);
-      });
-      await _persistHistory();
+  Future<void> _performItemDelete(HistoryItem item, {bool popDetail = false}) async {
+    setState(() {
+      _history.removeWhere((entry) => entry.id == item.id);
+      _updateFilteredHistory();
+    });
+    await _persistHistory();
 
-      try {
-        final file = File(item.draft.videoPath);
-        if (await file.exists()) await file.delete();
-      } catch (_) {}
+    try {
+      final file = File(item.draft.videoPath);
+      if (await file.exists()) await file.delete();
+    } catch (_) {}
 
-      if (popDetail && mounted) {
-        Navigator.of(context).pop();
-      }
+    if (popDetail && mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _deleteItem(HistoryItem item, {bool popDetail = false}) async {
+    if (await _confirmDeleteModal()) {
+      await _performItemDelete(item, popDetail: popDetail);
     }
   }
 
@@ -420,6 +489,7 @@ class HistoryPageState extends State<HistoryPage>
 
       setState(() {
         _history.clear();
+        _updateFilteredHistory();
       });
       await _persistHistory();
     }
@@ -447,6 +517,7 @@ class HistoryPageState extends State<HistoryPage>
       _history
         ..clear()
         ..addAll(restored);
+      _updateFilteredHistory();
     });
   }
 
@@ -465,70 +536,102 @@ class HistoryPageState extends State<HistoryPage>
     return Column(
       children: [
         Expanded(
-          child: _history.isEmpty && !_isImporting
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(40),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'How To Repost',
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            color: theme.brightness == Brightness.dark
-                                ? Colors.white
-                                : Colors.black,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.5,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            child: !_isInitialized
+                ? const SizedBox(key: ValueKey('loading_history_state'))
+                : _history.isEmpty && !_isImporting
+                    ? Center(
+                        key: const ValueKey('empty_repost_state'),
+                        child: Padding(
+                      padding: const EdgeInsets.all(40),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'How To Repost',
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              color: theme.brightness == Brightness.dark
+                                  ? Colors.white
+                                  : Colors.black,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 24),
-                        Text(
-                          '1) Copy the link of the reel on Instagram or TikTok.',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            color: theme.brightness == Brightness.dark
-                                ? Colors.white70
-                                : Colors.black54,
-                            fontWeight: FontWeight.bold,
-                            height: 1.5,
+                          const SizedBox(height: 24),
+                          Text(
+                            '1) Copy the link of the reel on Instagram or TikTok.',
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: theme.brightness == Brightness.dark
+                                  ? Colors.white70
+                                  : Colors.black54,
+                              fontWeight: FontWeight.bold,
+                              height: 1.5,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 20),
-                        Text(
-                          '2) Return back here and wait for the post to show up.',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            color: theme.brightness == Brightness.dark
-                                ? Colors.white70
-                                : Colors.black54,
-                            fontWeight: FontWeight.bold,
-                            height: 1.5,
+                          const SizedBox(height: 20),
+                          Text(
+                            '2) Return back here and wait for the post to show up.',
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: theme.brightness == Brightness.dark
+                                  ? Colors.white70
+                                  : Colors.black54,
+                              fontWeight: FontWeight.bold,
+                              height: 1.5,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.only(bottom: 24),
-                  itemCount: _filteredHistory.length + (_isImporting ? 1 : 0),
+                  )
+                : _filteredHistory.isEmpty && !_isImporting
+                    ? const SizedBox(key: ValueKey('empty_filtered_state'), width: double.infinity, height: double.infinity)
+                    : ListView.separated(
+                        key: const ValueKey('master_history_list'),
+                        controller: _scrollController,
+                        padding: const EdgeInsets.only(bottom: 24),
+                        itemCount: _filteredHistory.length + (_isImporting ? 1 : 0),
                   separatorBuilder: (_, __) => Divider(
                       height: 1,
                       color: theme.brightness == Brightness.dark
                           ? Colors.white12
                           : Colors.black12),
                   itemBuilder: (context, index) {
+                    Widget child;
                     if (_isImporting && index == 0) {
-                      return const _LoadingSkeleton();
-                    }
-                    final item = _filteredHistory[_isImporting ? index - 1 : index];
-                    return InkWell(
-                      onTap: () => _openItem(item),
-                      onLongPress: () => _deleteItem(item),
-                      borderRadius: BorderRadius.circular(12),
-                      child: Stack(
-                        children: [
+                      child = const _LoadingSkeleton(key: ValueKey('skeleton'));
+                    } else {
+                      final item = _filteredHistory[_isImporting ? index - 1 : index];
+                      final isHighlighted = _highlightedItemId == item.id;
+                      child = Dismissible(
+                        key: ValueKey(item.id),
+                        direction: DismissDirection.endToStart,
+                        confirmDismiss: (_) => _confirmDeleteModal(),
+                        onDismissed: (_) => _performItemDelete(item),
+                        background: Container(
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          color: const Color(0xFFFF4B4B),
+                          child: const Icon(Icons.delete_outline, color: Colors.white, size: 28),
+                        ),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 500),
+                          curve: Curves.easeInOut,
+                          color: isHighlighted
+                              ? (theme.brightness == Brightness.dark
+                                  ? Colors.white.withOpacity(0.10)
+                                  : Colors.black.withOpacity(0.07))
+                              : Colors.transparent,
+                          child: InkWell(
+                          onTap: () => _openItem(item),
+                        onLongPress: () => _deleteItem(item),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Stack(
+                          children: [
                           Padding(
                             padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
                             child: Row(
@@ -684,12 +787,17 @@ class HistoryPageState extends State<HistoryPage>
                               ],
                             ),
                           ),
-                        ],
-                      ),
-                    );
+                         ],
+                       ),
+                      ), // InkWell
+                     ), // AnimatedContainer
+                    ); // Dismissible
+                    }
+                    return child;
                   },
                 ),
-        ),
+              ),
+          ),
       ],
     );
   }
@@ -752,7 +860,7 @@ class _VideoThumb extends StatelessWidget {
 }
 
 class _LoadingSkeleton extends StatefulWidget {
-  const _LoadingSkeleton();
+  const _LoadingSkeleton({super.key});
 
   @override
   State<_LoadingSkeleton> createState() => _LoadingSkeletonState();
@@ -767,7 +875,7 @@ class _LoadingSkeletonState extends State<_LoadingSkeleton>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 1700),
     )..repeat();
   }
 
@@ -779,72 +887,99 @@ class _LoadingSkeletonState extends State<_LoadingSkeleton>
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Solid base color for the skeleton shapes (will be masked by ShaderMask)
+    final shapeColor = Colors.white;
+
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-        final opacity = 0.05 +
-            (_controller.value < 0.5
-                ? _controller.value
-                : 1.0 - _controller.value) *
-                0.1;
+        // shimmerX moves from -1.0 to 2.0 to ensure it starts fully offscreen left,
+        // sweeps entirely across, and has an extremely brief pause before returning.
+        final shimmerX = _controller.value * 3.0 - 1.0;
 
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 100,
+        // Helper to create solid shapes
+        Widget solidShape(double w, double h, BorderRadius r) {
+          return Container(
+            width: w,
+            height: h,
+            decoration: BoxDecoration(color: shapeColor, borderRadius: r),
+          );
+        }
+
+        final skeletonLayout = Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Thumbnail placeholder
+            solidShape(100, 125, BorderRadius.circular(20)),
+            const SizedBox(width: 16),
+            Expanded(
+              child: SizedBox(
                 height: 125,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(opacity),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Stack(
                   children: [
-                    Row(
+                    // Top: avatar + name bars
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        CircleAvatar(
-                          radius: 22,
-                          backgroundColor: Colors.white.withOpacity(opacity),
+                        Row(
+                          children: [
+                            solidShape(32, 32, BorderRadius.circular(16)),
+                            const SizedBox(width: 8),
+                            solidShape(100, 20, BorderRadius.circular(10)),
+                          ],
                         ),
-                        const SizedBox(width: 14),
-                        Container(
-                          width: 100,
-                          height: 20,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(opacity),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
+                        const SizedBox(height: 4),
+                        solidShape(double.infinity, 14, BorderRadius.circular(7)),
+                        const SizedBox(height: 8),
+                        solidShape(140, 14, BorderRadius.circular(7)),
                       ],
                     ),
-                    const SizedBox(height: 24),
-                    Container(
-                      width: double.infinity,
-                      height: 18,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(opacity),
-                        borderRadius: BorderRadius.circular(9),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      width: 140,
-                      height: 18,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(opacity),
-                        borderRadius: BorderRadius.circular(9),
+                    // Bottom: stats placeholders
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      child: Row(
+                        children: [
+                          _SkeletonStatItem(shapeColor: shapeColor),
+                          _SkeletonStatItem(shapeColor: shapeColor),
+                          _SkeletonStatItem(shapeColor: shapeColor),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
-            ],
+            ),
+          ],
+        );
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
+          child: ShaderMask(
+            blendMode: BlendMode.srcIn,
+            shaderCallback: (bounds) {
+              return LinearGradient(
+                // 45 degree diagonal sweeping across the united bounds
+                begin: Alignment(shimmerX - 0.8, shimmerX - 0.8),
+                end: Alignment(shimmerX + 0.8, shimmerX + 0.8),
+                colors: isDark
+                    ? [
+                        Colors.white.withOpacity(0.06),
+                        Colors.white.withOpacity(0.80),
+                        Colors.white.withOpacity(0.06),
+                      ]
+                    : [
+                        Colors.black.withOpacity(0.04),
+                        Colors.black.withOpacity(0.60),
+                        Colors.black.withOpacity(0.04),
+                      ],
+                stops: const [0.0, 0.5, 1.0],
+              ).createShader(bounds);
+            },
+            child: skeletonLayout,
           ),
         );
       },
@@ -852,7 +987,40 @@ class _LoadingSkeletonState extends State<_LoadingSkeleton>
   }
 }
 
+class _SkeletonStatItem extends StatelessWidget {
+  final Color shapeColor;
+  const _SkeletonStatItem({required this.shapeColor});
+
+  @override
+  Widget build(BuildContext context) {
+    final w = Platform.isIOS ? 55.0 : 65.0;
+    final iconSize = Platform.isIOS ? 12.0 : 14.0;
+
+    Widget solidShape(double width, double height, BorderRadius radius) {
+      return Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(color: shapeColor, borderRadius: radius),
+      );
+    }
+
+    return SizedBox(
+      width: w,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          solidShape(iconSize, iconSize, BorderRadius.circular(iconSize / 2)),
+          const SizedBox(width: 4),
+          solidShape(
+              28, Platform.isIOS ? 10.0 : 11.0, BorderRadius.circular(6)),
+        ],
+      ),
+    );
+  }
+}
+
 class _StatItem extends StatelessWidget {
+
   final IconData icon;
   final String count;
 

@@ -123,7 +123,7 @@ class _RepostDetailPageState extends State<RepostDetailPage> {
                           ? Colors.white.withOpacity(0.9)
                           : Colors.black.withOpacity(0.7),
                     ),
-                    const SizedBox(width: 1),
+                    const SizedBox(width: 16),
                     Expanded(
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
@@ -196,7 +196,7 @@ class _RepostDetailPageState extends State<RepostDetailPage> {
                             : Colors.black.withOpacity(0.7),
                       ),
                     ),
-                    const SizedBox(width: 1),
+                    const SizedBox(width: 16),
                     IconButton(
                       tooltip: 'Share',
                       onPressed: _shareGeneric,
