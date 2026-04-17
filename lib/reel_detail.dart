@@ -188,16 +188,12 @@ class _RepostDetailPageState extends State<RepostDetailPage> {
                       },
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
-                      icon: Image.asset(
-                        widget.item.draft.platform == SocialPlatform.instagram
-                            ? appTheme.brightness == Brightness.dark
-                                ? 'assets/social_media/instagram-dark.png'
-                                : 'assets/social_media/instagram-light.png'
-                            : appTheme.brightness == Brightness.dark
-                                ? 'assets/social_media/tiktok-dark.png'
-                                : 'assets/social_media/tiktok-light.png',
-                        width: 22,
-                        height: 22,
+                      icon: Icon(
+                        Icons.exit_to_app_rounded,
+                        size: 22,
+                        color: appTheme.brightness == Brightness.dark
+                            ? Colors.white.withOpacity(0.9)
+                            : Colors.black.withOpacity(0.7),
                       ),
                     ),
                     const SizedBox(width: 1),
