@@ -479,7 +479,7 @@ class RepostService {
         ]) ??
         _authorFromText(
           platform: platform,
-          text: metaByNames(['og:title', 'title']) ?? description,
+          text: metaByNames(['og:title', 'title', 'og:description', 'description']) ?? description,
         ) ??
         platform.label.toLowerCase();
 
@@ -560,10 +560,7 @@ class RepostService {
                 '')
             : null);
 
-    final finalAuthor = providedCaption?.isNotEmpty == true
-        ? _authorFromText(platform: platform, text: providedCaption!) ??
-            author
-        : author;
+    final finalAuthor = author;
 
     _log('Extracted Author: $finalAuthor');
     _log('Extracted Profile Pic: $authorProfileImageUrl');
@@ -589,17 +586,33 @@ class RepostService {
 
   String? _authorFromText({required SocialPlatform platform, required String text}) {
     if (text.isEmpty) return null;
-    final handleMatch = RegExp(r'@([A-Za-z0-9._]+)').firstMatch(text);
-    if (handleMatch != null) return handleMatch.group(1);
 
     switch (platform) {
       case SocialPlatform.instagram:
-        final match = RegExp(r'([A-Za-z0-9._]+)(?:\s+\(@[A-Za-z0-9._]+\))?\s+on Instagram').firstMatch(text);
-        return match?.group(1);
+        // Pattern 1: "Display Name (@handle) on Instagram" or "Display Name (@handle) • Instagram..."
+        final handleInParens = RegExp(r'\(@([A-Za-z0-9._]+)\)').firstMatch(text);
+        if (handleInParens != null) return handleInParens.group(1);
+
+        // Pattern 2: "handle on Instagram" or "Display Name on Instagram"
+        final onInstagram = RegExp(r'([^:@\n]+)\s+on Instagram').firstMatch(text);
+        if (onInstagram != null) return onInstagram.group(1)?.trim();
+        
+        // Pattern 3: "138 likes, 6 comments - handle on April 15, 2026" (common in og:description)
+        final descMatch = RegExp(r'(?:Likes|Comments)\s+-\s+([A-Za-z0-9._]+)\s+on\s+').firstMatch(text);
+        if (descMatch != null) return descMatch.group(1);
+        break;
+
       case SocialPlatform.tiktok:
         final match = RegExp(r'([A-Za-z0-9._]+)\s+on TikTok').firstMatch(text);
-        return match?.group(1);
+        if (match != null) return match.group(1);
+        break;
     }
+
+    // Generic fallback: If the text IS just a handle, use it.
+    // But don't just grab any @mention from a long caption.
+    final handleMatch = RegExp(r'^@([A-Za-z0-9._]+)$').firstMatch(text.trim());
+    if (handleMatch != null) return handleMatch.group(1);
+
     return null;
   }
 
