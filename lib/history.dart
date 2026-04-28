@@ -27,12 +27,20 @@ class HistoryItem {
     required this.draft,
     required this.editableDescription,
     required this.importedAt,
+    this.localThumbnailPath,
+    this.localProfileImagePath,
   });
 
   final String id;
   final RepostDraft draft;
   String editableDescription;
   final DateTime importedAt;
+
+  /// Local file path for the cached thumbnail image (survives CDN URL expiry).
+  String? localThumbnailPath;
+
+  /// Local file path for the cached author profile image.
+  String? localProfileImagePath;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -48,6 +56,8 @@ class HistoryItem {
         'likes': draft.likes,
         'comments': draft.comments,
         'views': draft.views,
+        'localThumbnailPath': localThumbnailPath,
+        'localProfileImagePath': localProfileImagePath,
       };
 
   factory HistoryItem.fromJson(Map<String, dynamic> json) {
@@ -79,6 +89,8 @@ class HistoryItem {
       importedAt:
           DateTime.tryParse(json['importedAt'] as String? ?? '') ??
           DateTime.now(),
+      localThumbnailPath: json['localThumbnailPath'] as String?,
+      localProfileImagePath: json['localProfileImagePath'] as String?,
     );
   }
 }
@@ -309,6 +321,14 @@ class HistoryPageState extends State<HistoryPage>
         importedAt: DateTime.now(),
       );
 
+      // Cache thumbnail & profile image locally so they survive CDN URL expiry
+      item.localThumbnailPath = await RepostService.cacheImageLocally(
+        draft.thumbnailUrl, prefix: 'thumb',
+      );
+      item.localProfileImagePath = await RepostService.cacheImageLocally(
+        draft.authorProfileImageUrl, prefix: 'profile',
+      );
+
       setState(() {
         _history.removeWhere(
           (entry) => entry.draft.sourceUrl == draft.sourceUrl,
@@ -499,6 +519,7 @@ class HistoryPageState extends State<HistoryPage>
     final prefs = await SharedPreferences.getInstance();
     final rawItems = prefs.getStringList(_historyStorageKey) ?? const [];
     final restored = <HistoryItem>[];
+    var needsPersist = false;
 
     for (final raw in rawItems) {
       try {
@@ -506,6 +527,21 @@ class HistoryPageState extends State<HistoryPage>
           jsonDecode(raw) as Map<String, dynamic>,
         );
         if (await File(item.draft.videoPath).exists()) {
+          // Migrate: cache images locally if not already cached
+          if (item.localThumbnailPath == null ||
+              !(await File(item.localThumbnailPath!).exists())) {
+            item.localThumbnailPath = await RepostService.cacheImageLocally(
+              item.draft.thumbnailUrl, prefix: 'thumb',
+            );
+            needsPersist = true;
+          }
+          if (item.localProfileImagePath == null ||
+              !(await File(item.localProfileImagePath!).exists())) {
+            item.localProfileImagePath = await RepostService.cacheImageLocally(
+              item.draft.authorProfileImageUrl, prefix: 'profile',
+            );
+            needsPersist = true;
+          }
           restored.add(item);
         }
       } catch (_) {}
@@ -519,6 +555,8 @@ class HistoryPageState extends State<HistoryPage>
         ..addAll(restored);
       _updateFilteredHistory();
     });
+
+    if (needsPersist) await _persistHistory();
   }
 
   Future<void> _persistHistory() async {
@@ -643,6 +681,7 @@ class HistoryPageState extends State<HistoryPage>
                               _VideoThumb(
                                 platform: item.draft.platform,
                                 thumbnailUrl: item.draft.thumbnailUrl,
+                                localPath: item.localThumbnailPath,
                                 width: thumbWidth,
                                 height: thumbHeight,
                               ),
@@ -693,10 +732,12 @@ class HistoryPageState extends State<HistoryPage>
                                                         theme.brightness == Brightness.dark
                                                             ? const Color(0xFF332C3B)
                                                             : const Color(0xFFE0E0E0),
-                                                    backgroundImage: item.draft.authorProfileImageUrl.isNotEmpty
-                                                        ? NetworkImage(item.draft.authorProfileImageUrl)
-                                                        : null,
-                                                    child: item.draft.authorProfileImageUrl.isEmpty
+                                                    backgroundImage: item.localProfileImagePath != null
+                                                        ? FileImage(File(item.localProfileImagePath!))
+                                                        : (item.draft.authorProfileImageUrl.isNotEmpty
+                                                            ? NetworkImage(item.draft.authorProfileImageUrl)
+                                                            : null),
+                                                    child: (item.localProfileImagePath == null && item.draft.authorProfileImageUrl.isEmpty)
                                                         ? Text(
                                                             item.draft.authorHandle
                                                                 .replaceFirst('@', '')
@@ -809,16 +850,46 @@ class _VideoThumb extends StatelessWidget {
     required this.thumbnailUrl,
     required this.width,
     required this.height,
+    this.localPath,
   });
 
   final SocialPlatform platform;
   final String thumbnailUrl;
   final double width;
   final double height;
+  /// If set, prefer displaying from this local file instead of [thumbnailUrl].
+  final String? localPath;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    // Prefer local file, fall back to network URL
+    Widget? imageWidget;
+    if (localPath != null) {
+      imageWidget = Image.file(
+        File(localPath!),
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) {
+          // Local file missing/corrupt — try network as fallback
+          if (thumbnailUrl.isNotEmpty) {
+            return Image.network(
+              thumbnailUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox.expand(),
+            );
+          }
+          return const SizedBox.expand();
+        },
+      );
+    } else if (thumbnailUrl.isNotEmpty) {
+      imageWidget = Image.network(
+        thumbnailUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const SizedBox.expand(),
+      );
+    }
+
     return Container(
       width: width,
       height: height,
@@ -833,12 +904,7 @@ class _VideoThumb extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            if (thumbnailUrl.isNotEmpty)
-              Image.network(
-                thumbnailUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.expand(),
-              ),
+            if (imageWidget != null) imageWidget,
             DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(

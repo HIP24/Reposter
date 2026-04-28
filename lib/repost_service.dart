@@ -866,6 +866,42 @@ class RepostService {
     await sink.close();
     return file.path;
   }
+
+  /// Downloads an image from [url] to a local cache directory and returns the
+  /// local file path. Returns `null` if the download fails or the URL is empty.
+  /// If a cached file already exists for this URL, returns it immediately.
+  static Future<String?> cacheImageLocally(String url, {String prefix = 'img'}) async {
+    if (url.isEmpty) return null;
+    try {
+      // Create a stable filename from the URL (use hash to avoid path issues)
+      final hash = url.hashCode.toUnsigned(32).toRadixString(16);
+      final ext = url.contains('.png') ? 'png' : 'jpg';
+      final fileName = '${prefix}_$hash.$ext';
+
+      final baseDir = await getTemporaryDirectory();
+      final cacheDir = Directory(p.join(baseDir.path, 'reposts', 'image_cache'));
+      if (!await cacheDir.exists()) await cacheDir.create(recursive: true);
+
+      final filePath = p.join(cacheDir.path, fileName);
+      final file = File(filePath);
+
+      // Return cached file if it already exists
+      if (await file.exists()) return filePath;
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: _browserHeaders,
+      );
+      if (response.statusCode < 200 || response.statusCode >= 300) return null;
+      if (response.bodyBytes.isEmpty) return null;
+
+      await file.writeAsBytes(response.bodyBytes);
+      return filePath;
+    } catch (e) {
+      if (kDebugMode) print('[RepostService] Image cache failed for $url: $e');
+      return null;
+    }
+  }
 }
 
 class _ExtractedPost {

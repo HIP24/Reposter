@@ -143,10 +143,12 @@ class _RepostDetailPageState extends State<RepostDetailPage> {
                               backgroundColor: appTheme.brightness == Brightness.dark
                                   ? const Color(0xFF332C3B)
                                   : const Color(0xFFE0E0E0),
-                              backgroundImage: widget.item.draft.authorProfileImageUrl.isNotEmpty
-                                  ? NetworkImage(widget.item.draft.authorProfileImageUrl)
-                                  : null,
-                              child: widget.item.draft.authorProfileImageUrl.isEmpty
+                              backgroundImage: widget.item.localProfileImagePath != null
+                                  ? FileImage(File(widget.item.localProfileImagePath!))
+                                  : (widget.item.draft.authorProfileImageUrl.isNotEmpty
+                                      ? NetworkImage(widget.item.draft.authorProfileImageUrl)
+                                      : null),
+                              child: (widget.item.localProfileImagePath == null && widget.item.draft.authorProfileImageUrl.isEmpty)
                                   ? Text(
                                       author
                                           .replaceFirst('@', '')
