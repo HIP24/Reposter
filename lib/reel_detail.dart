@@ -120,8 +120,8 @@ class _RepostDetailPageState extends State<RepostDetailPage> {
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
                       color: appTheme.brightness == Brightness.dark
-                          ? Colors.white.withOpacity(0.9)
-                          : Colors.black.withOpacity(0.7),
+                          ? Colors.white.withValues(alpha: 0.9)
+                          : Colors.black.withValues(alpha: 0.7),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -138,30 +138,17 @@ class _RepostDetailPageState extends State<RepostDetailPage> {
                         },
                         child: Row(
                           children: [
-                            CircleAvatar(
-                              radius: 16,
-                              backgroundColor: appTheme.brightness == Brightness.dark
-                                  ? const Color(0xFF332C3B)
-                                  : const Color(0xFFE0E0E0),
-                              backgroundImage: widget.item.localProfileImagePath != null
-                                  ? FileImage(File(widget.item.localProfileImagePath!))
-                                  : (widget.item.draft.authorProfileImageUrl.isNotEmpty
-                                      ? NetworkImage(widget.item.draft.authorProfileImageUrl)
-                                      : null),
-                              child: (widget.item.localProfileImagePath == null && widget.item.draft.authorProfileImageUrl.isEmpty)
-                                  ? Text(
-                                      author
-                                          .replaceFirst('@', '')
-                                          .characters
-                                          .take(1)
-                                          .toString()
-                                          .toUpperCase()
-                                          .ifEmpty('R'),
-                                      style: appTheme.textTheme.labelSmall
-                                          ?.copyWith(fontWeight: FontWeight.bold),
-                                    )
-                                  : null,
-                            ),
+                            widget.item.localProfileImagePath != null
+                                ? ClipOval(child: Image.file(File(widget.item.localProfileImagePath!), fit: BoxFit.cover, width: 32, height: 32))
+                                : FutureBuilder<String?>(
+                                    future: RepostService.cacheImageLocally(widget.item.draft.authorProfileImageUrl, prefix: 'profile'),
+                                    builder: (context, snapshot) {
+                                      if (snapshot.hasData && snapshot.data != null) {
+                                        return ClipOval(child: Image.file(File(snapshot.data!), fit: BoxFit.cover, width: 32, height: 32));
+                                      }
+                                      return _initialsWidget(appTheme);
+                                    },
+                                  ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
@@ -194,8 +181,8 @@ class _RepostDetailPageState extends State<RepostDetailPage> {
                         Icons.exit_to_app_rounded,
                         size: 22,
                         color: appTheme.brightness == Brightness.dark
-                            ? Colors.white.withOpacity(0.9)
-                            : Colors.black.withOpacity(0.7),
+                            ? Colors.white.withValues(alpha: 0.9)
+                            : Colors.black.withValues(alpha: 0.7),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -208,8 +195,8 @@ class _RepostDetailPageState extends State<RepostDetailPage> {
                         Icons.share_outlined,
                         size: 22,
                         color: appTheme.brightness == Brightness.dark
-                            ? Colors.white.withOpacity(0.9)
-                            : Colors.black.withOpacity(0.7),
+                            ? Colors.white.withValues(alpha: 0.9)
+                            : Colors.black.withValues(alpha: 0.7),
                       ),
                     ),
                   ],
@@ -340,7 +327,7 @@ class _RepostDetailPageState extends State<RepostDetailPage> {
                             filled: true,
                             fillColor: appTheme.brightness == Brightness.dark
                                 ? const Color(0xFF221C27)
-                                : Colors.black.withOpacity(0.05),
+                                : Colors.black.withValues(alpha: 0.05),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(22),
                               borderSide: BorderSide.none,
@@ -499,4 +486,11 @@ class _StatItem extends StatelessWidget {
     if (number >= 1000) return '${(number / 1000).toStringAsFixed(1)}K';
     return number.toString();
   }
+}
+
+Widget _initialsWidget(ThemeData theme) {
+  return Text(
+    'R', // Fallback initial
+    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+  );
 }

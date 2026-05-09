@@ -111,14 +111,13 @@ class HistoryPageState extends State<HistoryPage>
   final List<HistoryItem> _history = [];
   List<HistoryItem> _cachedFilteredHistory = [];
   bool _isImporting = false;
-  double _importProgress = 0;
   Timer? _clipboardTimer;
   String? _lastClipboardText;
   String? _highlightedItemId;
   Timer? _highlightTimer;
   final ScrollController _scrollController = ScrollController();
 
-  Set<SocialPlatform> _activePlatforms = {
+  final Set<SocialPlatform> _activePlatforms = {
     SocialPlatform.instagram,
     SocialPlatform.tiktok
   };
@@ -155,6 +154,7 @@ class HistoryPageState extends State<HistoryPage>
     WidgetsBinding.instance.addObserver(this);
     _initializeData();
   }
+
 
   Future<void> _initializeData() async {
     await _restoreHistory();
@@ -212,12 +212,13 @@ class HistoryPageState extends State<HistoryPage>
 
     if (text == null || text.isEmpty || text == _lastClipboardText) return;
 
-    final lower = text.toLowerCase();
-    final looksRelevant = lower.contains('instagram.com/') ||
-        lower.contains('instagr.am/') ||
-        lower.contains('tiktok.com/');
+    final instagramRegex = RegExp(r'https?://(?:www\.)?instagram\.com/(?:p|reel|tv)/([a-zA-Z0-9_\-]+)', caseSensitive: false);
+    final tiktokRegex = RegExp(r'https?://(?:www\.|vm\.|vt\.)?tiktok\.com/(?:@[a-zA-Z0-9_\.]+/video/\d+|[a-zA-Z0-9_\-]+)', caseSensitive: false);
 
-    if (!looksRelevant) {
+    final isInstagram = instagramRegex.hasMatch(text);
+    final isTiktok = tiktokRegex.hasMatch(text);
+
+    if (!isInstagram && !isTiktok) {
       _lastClipboardText = text;
       return;
     }
@@ -261,15 +262,17 @@ class HistoryPageState extends State<HistoryPage>
     final canonicalUrl = await _service.resolveCanonicalUrl(cleanUrl);
 
     final existingIndex = _history.indexWhere((item) {
-      return item.draft.sourceUrl == canonicalUrl || 
-             item.draft.sourceUrl.toString().split('?').first.replaceAll(RegExp(r'/$'), '') == canonicalUrl.replaceAll(RegExp(r'/$'), '');
+      final itemUrlStr = item.draft.sourceUrl.toString();
+      return itemUrlStr == canonicalUrl || 
+             itemUrlStr.split('?').first.replaceAll(RegExp(r'/$'), '') == canonicalUrl.replaceAll(RegExp(r'/$'), '');
     });
 
     if (existingIndex != -1) {
       final existingItem = _history[existingIndex];
       if (await File(existingItem.draft.videoPath).exists()) {
-        if (kDebugMode)
+        if (kDebugMode) {
           print('[UI] Reusing existing video for: $canonicalUrl');
+        }
         setState(() {
           _history.removeAt(existingIndex);
           _history.insert(0, existingItem);
@@ -281,10 +284,10 @@ class HistoryPageState extends State<HistoryPage>
       }
     }
 
+    if (!mounted) return;
     FocusScope.of(context).unfocus();
     setState(() {
       _isImporting = true;
-      _importProgress = 0;
     });
     // Scroll to top immediately so the skeleton at index 0 is visible
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -298,19 +301,10 @@ class HistoryPageState extends State<HistoryPage>
     });
 
     try {
-
-      DateTime lastProgressUpdate = DateTime.now();
       final draft = await _service.importPost(
         cleanUrl,
-        onProgress: (progress) {
-          final now = DateTime.now();
-          if (now.difference(lastProgressUpdate).inMilliseconds > 100 ||
-              progress == 1.0) {
-            setState(() {
-              _importProgress = progress;
-            });
-            lastProgressUpdate = now;
-          }
+        onProgress: (_) {
+          // Progress reporting removed as it was unused
         },
       );
 
@@ -336,8 +330,9 @@ class HistoryPageState extends State<HistoryPage>
         _history.insert(0, item);
         _updateFilteredHistory();
       });
-      if (kDebugMode)
+      if (kDebugMode) {
         print('[UI] History updated. Author: ${item.draft.author}');
+      }
       await _persistHistory();
       // Scroll to top so the new reel is visible
       if (_scrollController.hasClients) {
@@ -358,7 +353,6 @@ class HistoryPageState extends State<HistoryPage>
       if (mounted) {
         setState(() {
           _isImporting = false;
-          _importProgress = 0;
         });
       }
     }
@@ -633,7 +627,7 @@ class HistoryPageState extends State<HistoryPage>
                         controller: _scrollController,
                         padding: const EdgeInsets.only(bottom: 24),
                         itemCount: _filteredHistory.length + (_isImporting ? 1 : 0),
-                  separatorBuilder: (_, __) => Divider(
+                  separatorBuilder: (context, _) => Divider(
                       height: 1,
                       color: theme.brightness == Brightness.dark
                           ? Colors.white12
@@ -661,8 +655,8 @@ class HistoryPageState extends State<HistoryPage>
                           curve: Curves.easeInOut,
                           color: isHighlighted
                               ? (theme.brightness == Brightness.dark
-                                  ? Colors.white.withOpacity(0.10)
-                                  : Colors.black.withOpacity(0.07))
+                                  ? Colors.white.withValues(alpha: 0.10)
+                                  : Colors.black.withValues(alpha: 0.07))
                               : Colors.transparent,
                           child: InkWell(
                           onTap: () => _openItem(item),
@@ -691,7 +685,7 @@ class HistoryPageState extends State<HistoryPage>
                                 child: Container(
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.4),
+                                    color: Colors.black.withValues(alpha: 0.4),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Image.asset(
@@ -732,23 +726,19 @@ class HistoryPageState extends State<HistoryPage>
                                                         theme.brightness == Brightness.dark
                                                             ? const Color(0xFF332C3B)
                                                             : const Color(0xFFE0E0E0),
-                                                    backgroundImage: item.localProfileImagePath != null
-                                                        ? FileImage(File(item.localProfileImagePath!))
-                                                        : (item.draft.authorProfileImageUrl.isNotEmpty
-                                                            ? NetworkImage(item.draft.authorProfileImageUrl)
-                                                            : null),
-                                                    child: (item.localProfileImagePath == null && item.draft.authorProfileImageUrl.isEmpty)
-                                                        ? Text(
-                                                            item.draft.authorHandle
-                                                                .replaceFirst('@', '')
-                                                                .characters
-                                                                .take(1)
-                                                                .toString()
-                                                                .toUpperCase()
-                                                                .ifEmpty('R'),
-                                                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                                                          )
-                                                        : null,
+                                                    child: item.localProfileImagePath != null
+                                                      ? ClipOval(child: Image.file(File(item.localProfileImagePath!), fit: BoxFit.cover, width: 32, height: 32))
+                                                      : FutureBuilder<String?>(
+                                                          future: RepostService.cacheImageLocally(item.draft.authorProfileImageUrl, prefix: 'profile'),
+                                                          builder: (context, snapshot) {
+                                                            if (snapshot.hasData && snapshot.data != null) {
+                                                              // Note: item.localProfileImagePath should ideally be updated here, 
+                                                              // but for simplicity we just render the file.
+                                                              return ClipOval(child: Image.file(File(snapshot.data!), fit: BoxFit.cover, width: 32, height: 32));
+                                                            }
+                                                            return _initialsWidget(theme);
+                                                          },
+                                                        ),
                                                   ),
                                                 ),
                                                 const SizedBox(width: 8),
@@ -870,23 +860,20 @@ class _VideoThumb extends StatelessWidget {
       imageWidget = Image.file(
         File(localPath!),
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) {
-          // Local file missing/corrupt — try network as fallback
-          if (thumbnailUrl.isNotEmpty) {
-            return Image.network(
-              thumbnailUrl,
+        errorBuilder: (context, error, stackTrace) => const SizedBox.expand(),
+      );
+    } else {
+      imageWidget = FutureBuilder<String?>(
+        future: RepostService.cacheImageLocally(thumbnailUrl, prefix: 'thumb'),
+        builder: (context, snapshot) {
+          if (snapshot.hasData && snapshot.data != null) {
+            return Image.file(
+              File(snapshot.data!),
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const SizedBox.expand(),
             );
           }
           return const SizedBox.expand();
         },
-      );
-    } else if (thumbnailUrl.isNotEmpty) {
-      imageWidget = Image.network(
-        thumbnailUrl,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => const SizedBox.expand(),
       );
     }
 
@@ -904,16 +891,16 @@ class _VideoThumb extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            if (imageWidget != null) imageWidget,
+            imageWidget,
             DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.black.withOpacity(0.3),
-                    Colors.black.withOpacity(0.1),
-                    Colors.black.withOpacity(0.4),
+                    Colors.black.withValues(alpha: 0.3),
+                    Colors.black.withValues(alpha: 0.1),
+                    Colors.black.withValues(alpha: 0.4),
                   ],
                 ),
               ),
@@ -1033,14 +1020,14 @@ class _LoadingSkeletonState extends State<_LoadingSkeleton>
                 end: Alignment(shimmerX + 0.8, shimmerX + 0.8),
                 colors: isDark
                     ? [
-                        Colors.white.withOpacity(0.06),
-                        Colors.white.withOpacity(0.80),
-                        Colors.white.withOpacity(0.06),
+                        Colors.white.withValues(alpha: 0.06),
+                        Colors.white.withValues(alpha: 0.80),
+                        Colors.white.withValues(alpha: 0.06),
                       ]
                     : [
-                        Colors.black.withOpacity(0.04),
-                        Colors.black.withOpacity(0.60),
-                        Colors.black.withOpacity(0.04),
+                        Colors.black.withValues(alpha: 0.04),
+                        Colors.black.withValues(alpha: 0.60),
+                        Colors.black.withValues(alpha: 0.04),
                       ],
                 stops: const [0.0, 0.5, 1.0],
               ).createShader(bounds);
@@ -1121,6 +1108,13 @@ class _StatItem extends StatelessWidget {
       ),
     );
   }
+}
+
+Widget _initialsWidget(ThemeData theme) {
+  return Text(
+    'R', // Fallback initial
+    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+  );
 }
 
 String _formatNumber(int? number) {

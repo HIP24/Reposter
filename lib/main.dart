@@ -11,14 +11,14 @@ void main() {
 class ReposterApp extends StatefulWidget {
   const ReposterApp({super.key});
 
-  static _ReposterAppState of(BuildContext context) =>
-      context.findAncestorStateOfType<_ReposterAppState>()!;
+  static ReposterAppState of(BuildContext context) =>
+      context.findAncestorStateOfType<ReposterAppState>()!;
 
   @override
-  State<ReposterApp> createState() => _ReposterAppState();
+  State<ReposterApp> createState() => ReposterAppState();
 }
 
-class _ReposterAppState extends State<ReposterApp> {
+class ReposterAppState extends State<ReposterApp> {
   ThemeMode _themeMode = ThemeMode.dark;
 
   void toggleTheme() {
@@ -114,8 +114,8 @@ class _ReposterHomePageState extends State<ReposterHomePage> {
                         Icons.delete_outline,
                         size: 24,
                         color: theme.brightness == Brightness.dark
-                            ? Colors.white.withOpacity(0.9)
-                            : Colors.black.withOpacity(0.7),
+                            ? Colors.white.withValues(alpha: 0.9)
+                            : Colors.black.withValues(alpha: 0.7),
                       ),
                       tooltip: 'Delete all',
                     ),
@@ -126,13 +126,13 @@ class _ReposterHomePageState extends State<ReposterHomePage> {
                       width: 88, 
                       decoration: BoxDecoration(
                         color: theme.brightness == Brightness.dark
-                            ? Colors.black.withOpacity(0.2)
-                            : Colors.black.withOpacity(0.05),
+                            ? Colors.black.withValues(alpha: 0.2)
+                            : Colors.black.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(18),
                         border: Border.all(
                           color: theme.brightness == Brightness.dark
                               ? Colors.white10
-                              : Colors.black.withOpacity(0.1),
+                              : Colors.black.withValues(alpha: 0.1),
                           width: 1,
                         ),
                       ),
@@ -157,7 +157,7 @@ class _ReposterHomePageState extends State<ReposterHomePage> {
                                       height: (_historyKey.currentState?.isPlatformActive(SocialPlatform.instagram) ?? true) ? 17 : 14,
                                       color: (_historyKey.currentState?.isPlatformActive(SocialPlatform.instagram) ?? true)
                                           ? null
-                                          : Colors.grey.withOpacity(0.5),
+                                          : Colors.grey.withValues(alpha: 0.5),
                                     ),
                                   ),
                                 ),
@@ -167,8 +167,8 @@ class _ReposterHomePageState extends State<ReposterHomePage> {
                                 width: 1,
                                 height: 16,
                                 color: theme.brightness == Brightness.dark
-                                    ? Colors.white.withOpacity(0.05)
-                                    : Colors.black.withOpacity(0.05),
+                                    ? Colors.white.withValues(alpha: 0.05)
+                                    : Colors.black.withValues(alpha: 0.05),
                               ),
                               // TikTok half
                               Expanded(
@@ -185,7 +185,7 @@ class _ReposterHomePageState extends State<ReposterHomePage> {
                                       height: (_historyKey.currentState?.isPlatformActive(SocialPlatform.tiktok) ?? true) ? 20 : 17,
                                       color: (_historyKey.currentState?.isPlatformActive(SocialPlatform.tiktok) ?? true)
                                           ? null
-                                          : Colors.grey.withOpacity(0.5),
+                                          : Colors.grey.withValues(alpha: 0.5),
                                     ),
                                   ),
                                 ),
@@ -203,13 +203,13 @@ class _ReposterHomePageState extends State<ReposterHomePage> {
                         height: 36,
                         decoration: BoxDecoration(
                           color: theme.brightness == Brightness.dark
-                              ? Colors.black.withOpacity(0.2)
-                              : Colors.black.withOpacity(0.05),
+                              ? Colors.black.withValues(alpha: 0.2)
+                              : Colors.black.withValues(alpha: 0.05),
                           borderRadius: BorderRadius.circular(18),
                           border: Border.all(
                             color: theme.brightness == Brightness.dark
                                 ? Colors.white10
-                                : Colors.black.withOpacity(0.1),
+                                : Colors.black.withValues(alpha: 0.1),
                             width: 1,
                           ),
                         ),
@@ -235,7 +235,7 @@ class _ReposterHomePageState extends State<ReposterHomePage> {
                                     boxShadow: theme.brightness == Brightness.light
                                         ? [
                                             BoxShadow(
-                                              color: Colors.black.withOpacity(0.1),
+                                              color: Colors.black.withValues(alpha: 0.1),
                                               blurRadius: 4,
                                               offset: const Offset(0, 2),
                                             )
@@ -248,8 +248,8 @@ class _ReposterHomePageState extends State<ReposterHomePage> {
                                         : Icons.dark_mode_rounded,
                                     size: 18,
                                     color: theme.brightness == Brightness.light
-                                        ? Colors.black.withOpacity(0.7)
-                                        : Colors.white.withOpacity(0.9),
+                                        ? Colors.black.withValues(alpha: 0.7)
+                                        : Colors.white.withValues(alpha: 0.9),
                                   ),
                                 ),
                               ),

@@ -83,7 +83,7 @@ class RepostService {
     if (kDebugMode) print('[RepostService] $message');
   }
 
-  static const _browserHeaders = <String, String>{
+  static const browserHeaders = <String, String>{
     'User-Agent':
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
         '(KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
@@ -206,7 +206,7 @@ class RepostService {
   }
 
   Future<String> _fetchPageHtml(Uri url, {Map<String, String>? headers}) async {
-    final response = await http.get(url, headers: headers ?? _browserHeaders);
+    final response = await http.get(url, headers: headers ?? browserHeaders);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw HttpException(
         'Server returned error ${response.statusCode}. The content might be private or restricted.',
@@ -294,13 +294,9 @@ class RepostService {
     }
 
     shortcode ??= sourceUrl.pathSegments.firstWhere((s) => s.length > 5, orElse: () => '');
-    if (shortcode == null || shortcode.isEmpty) {
+    if (shortcode.isEmpty) {
       throw const FormatException('Could not find the Instagram post ID.');
     }
-
-    int? likes;
-    int? comments;
-    int? views;
 
     try {
       final ajaxUrl = Uri.https('www.instagram.com', '/p/$shortcode/', {
@@ -309,7 +305,7 @@ class RepostService {
       });
 
       final response = await http.get(ajaxUrl, headers: {
-        ..._browserHeaders,
+        ...browserHeaders,
         'X-IG-App-ID': '936619743392459',
         'X-Requested-With': 'XMLHttpRequest',
       });
@@ -837,7 +833,7 @@ class RepostService {
     void Function(double)? onProgress,
   }) async {
     final request = http.Request('GET', videoUrl)
-      ..headers.addAll(_browserHeaders)
+      ..headers.addAll(browserHeaders)
       ..headers['Referer'] = '${sourceUrl.scheme}://${sourceUrl.host}/';
     final streamed = await request.send();
 
@@ -890,7 +886,7 @@ class RepostService {
 
       final response = await http.get(
         Uri.parse(url),
-        headers: _browserHeaders,
+        headers: browserHeaders,
       );
       if (response.statusCode < 200 || response.statusCode >= 300) return null;
       if (response.bodyBytes.isEmpty) return null;
@@ -945,6 +941,7 @@ class ShareBridge {
       return;
     }
 
+    // ignore: deprecated_member_use
     await Share.shareXFiles(
       [XFile(filePath)],
       text: caption,
@@ -993,6 +990,7 @@ class ShareBridge {
     required String filePath,
     required String caption,
   }) async {
+    // ignore: deprecated_member_use
     await Share.shareXFiles(
       [XFile(filePath)],
       text: caption,
