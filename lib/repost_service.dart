@@ -96,6 +96,26 @@ class RepostService {
     'Upgrade-Insecure-Requests': '1',
   };
 
+  static final http.Client _client = http.Client();
+
+  /// Wraps a network call with a retry mechanism for transient "Client disconnected" or timeout errors.
+  static Future<T> _withRetry<T>(Future<T> Function() action, {int maxRetries = 2}) async {
+    int attempts = 0;
+    while (true) {
+      try {
+        return await action();
+      } catch (e) {
+        attempts++;
+        final isNetworkError = e is http.ClientException || e is SocketException || e is HttpException;
+        if (!isNetworkError || attempts > maxRetries) {
+          rethrow;
+        }
+        if (kDebugMode) print('[RepostService] Network error ($e), retrying ($attempts/$maxRetries)...');
+        await Future.delayed(Duration(milliseconds: 500 * attempts));
+      }
+    }
+  }
+
   Future<String> resolveCanonicalUrl(String rawUrl) async {
     try {
       final uri = _normalizeUrl(rawUrl);
@@ -104,7 +124,7 @@ class RepostService {
       if (platform == SocialPlatform.tiktok) {
         if (uri.host.contains('vm.tiktok.com') || uri.host.contains('vt.tiktok.com')) {
           final request = http.Request('HEAD', uri)..followRedirects = false;
-          final response = await http.Client().send(request);
+          final response = await _withRetry(() => _client.send(request));
           if (response.isRedirect && response.headers['location'] != null) {
             final redirectedUrl = Uri.parse(response.headers['location']!);
             return redirectedUrl.toString().split('?').first;
@@ -114,7 +134,7 @@ class RepostService {
       } else if (platform == SocialPlatform.instagram) {
         if (uri.host.contains('instagr.am')) {
            final request = http.Request('HEAD', uri)..followRedirects = false;
-           final response = await http.Client().send(request);
+           final response = await _withRetry(() => _client.send(request));
            if (response.isRedirect && response.headers['location'] != null) {
              final redirectedUrl = Uri.parse(response.headers['location']!);
              return redirectedUrl.toString().split('?').first;
@@ -206,7 +226,7 @@ class RepostService {
   }
 
   Future<String> _fetchPageHtml(Uri url, {Map<String, String>? headers}) async {
-    final response = await http.get(url, headers: headers ?? browserHeaders);
+    final response = await _withRetry(() => _client.get(url, headers: headers ?? browserHeaders));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw HttpException(
         'Server returned error ${response.statusCode}. The content might be private or restricted.',
@@ -230,7 +250,7 @@ class RepostService {
       final apiUrl = Uri.https('www.tikwm.com', '/api/', {
         'url': sourceUrl.toString(),
       });
-      final response = await http.get(apiUrl);
+      final response = await _withRetry(() => _client.get(apiUrl));
       final json = jsonDecode(response.body) as Map<String, dynamic>;
 
       if (json['code'] != 0) throw FormatException(json['msg'] ?? 'TikTok API error.');
@@ -304,11 +324,11 @@ class RepostService {
         '__d': 'dis',
       });
 
-      final response = await http.get(ajaxUrl, headers: {
+      final response = await _withRetry(() => _client.get(ajaxUrl, headers: {
         ...browserHeaders,
         'X-IG-App-ID': '936619743392459',
         'X-Requested-With': 'XMLHttpRequest',
-      });
+      }));
 
       if (response.statusCode == 200) {
         _log('Instagram AJAX successful.');
@@ -711,13 +731,13 @@ class RepostService {
     // Patterns for caption in embedded JSON
     final patterns = [
       // edge_media_to_caption format (most common)
-      RegExp(r'edge_media_to_caption\":\{\"edges\":\[\{\"node\":\{\"text\":\"([^"]+)\"'),
-      RegExp(r'"edge_media_to_caption":\{"edges":\[\{"node":\{"text":"([^"]+)"'),
+      RegExp(r'edge_media_to_caption\":\{\"edges\":\[\{\"node\":\{\"text\":\"((?:[^"\\]|\\.)*)\"'),
+      RegExp(r'"edge_media_to_caption":\{"edges":\[\{"node":\{"text":"((?:[^"\\]|\\.)*)"'),
       // Direct caption.text format
-      RegExp(r'\"caption\":\{\"text\":\"([^"]+)\"'),
-      RegExp(r'"caption":\{"text":"([^"]+)"'),
+      RegExp(r'\"caption\":\{\"text\":\"((?:[^"\\]|\\.)*)\"'),
+      RegExp(r'"caption":\{"text":"((?:[^"\\]|\\.)*)"'),
       // Shortcode media caption
-      RegExp(r'shortcode_media[^}]*?\"caption\":\{\"text\":\"([^"]+)\"'),
+      RegExp(r'shortcode_media[^}]*?\"caption\":\{\"text\":\"((?:[^"\\]|\\.)*)\"'),
     ];
 
     for (final pattern in patterns) {
@@ -725,8 +745,7 @@ class RepostService {
       if (match != null) {
         final raw = match.group(1);
         if (raw != null && raw.isNotEmpty) {
-          final decoded = _decodeEscapedUrl(raw) ?? raw;
-          final cleaned = _cleanCaption(decoded);
+          final cleaned = _cleanCaption(raw);
           if (cleaned.isNotEmpty) {
             _log('Found caption via pattern: ${pattern.pattern.substring(0, pattern.pattern.length > 30 ? 30 : pattern.pattern.length)}...');
             return cleaned;
@@ -812,7 +831,15 @@ class RepostService {
     if (url == null) return null;
     try {
       // Collapse literal double-escaped backslashes (\\u -> \u)
-      var safe = url.replaceAll(r'\\u', r'\u').replaceAll('"', r'\"');
+      var safe = url.replaceAll(r'\\u', r'\u');
+      
+      // If the string already contains escaped quotes, it's likely already a JSON fragment.
+      // If we replace " with \" again, we'll double-escape it.
+      // But we must ensure it's a valid JSON string literal.
+      if (!safe.contains(r'\"')) {
+        safe = safe.replaceAll('"', r'\"');
+      }
+      
       return jsonDecode('"$safe"').toString().replaceAll(RegExp(r'\\+/'), '/');
     } catch (e) {
       // Fallback to manual cleaning if jsonDecode fails
@@ -835,7 +862,7 @@ class RepostService {
     final request = http.Request('GET', videoUrl)
       ..headers.addAll(browserHeaders)
       ..headers['Referer'] = '${sourceUrl.scheme}://${sourceUrl.host}/';
-    final streamed = await request.send();
+    final streamed = await _withRetry(() => _client.send(request));
 
     if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
       throw HttpException('Download failed (Status ${streamed.statusCode}).');
@@ -884,10 +911,10 @@ class RepostService {
       // Return cached file if it already exists
       if (await file.exists()) return filePath;
 
-      final response = await http.get(
+      final response = await _withRetry(() => _client.get(
         Uri.parse(url),
         headers: browserHeaders,
-      );
+      ));
       if (response.statusCode < 200 || response.statusCode >= 300) return null;
       if (response.bodyBytes.isEmpty) return null;
 
@@ -897,6 +924,10 @@ class RepostService {
       if (kDebugMode) print('[RepostService] Image cache failed for $url: $e');
       return null;
     }
+  }
+
+  void dispose() {
+    _client.close();
   }
 }
 

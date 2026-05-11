@@ -172,6 +172,7 @@ class HistoryPageState extends State<HistoryPage>
     _clipboardTimer?.cancel();
     _highlightTimer?.cancel();
     _scrollController.dispose();
+    _service.dispose();
     super.dispose();
   }
 
