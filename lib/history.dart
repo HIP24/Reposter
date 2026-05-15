@@ -242,13 +242,13 @@ class HistoryPageState extends State<HistoryPage>
 
     if (existingItem != null) {
       _lastClipboardText = text;
-      if (kDebugMode) print('[UI] URL already in history, skipping: $normalizedClipboard');
+      if (kDebugMode) debugPrint('[UI] URL already in history, skipping: $normalizedClipboard');
       _flashHighlight(existingItem.id);
       return;
     }
 
     _lastClipboardText = text;
-    if (kDebugMode) print('[UI] Auto-import from clipboard: $text');
+    if (kDebugMode) debugPrint('[UI] Auto-import from clipboard: $text');
     await _importPost(url: text, fromClipboardWatcher: true);
   }
 
@@ -272,7 +272,7 @@ class HistoryPageState extends State<HistoryPage>
       final existingItem = _history[existingIndex];
       if (await File(existingItem.draft.videoPath).exists()) {
         if (kDebugMode) {
-          print('[UI] Reusing existing video for: $canonicalUrl');
+          debugPrint('[UI] Reusing existing video for: $canonicalUrl');
         }
         setState(() {
           _history.removeAt(existingIndex);
@@ -332,7 +332,7 @@ class HistoryPageState extends State<HistoryPage>
         _updateFilteredHistory();
       });
       if (kDebugMode) {
-        print('[UI] History updated. Author: ${item.draft.author}');
+        debugPrint('[UI] History updated. Author: ${item.draft.author}');
       }
       await _persistHistory();
       // Scroll to top so the new reel is visible
@@ -686,13 +686,15 @@ class HistoryPageState extends State<HistoryPage>
                                 child: Container(
                                   padding: const EdgeInsets.all(4),
                                   decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.4),
+                                    color: theme.brightness == Brightness.dark
+                                        ? Colors.black.withValues(alpha: 0.7)
+                                        : Colors.white.withValues(alpha: 0.75),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Image.asset(
                                     item.draft.platform == SocialPlatform.instagram
-                                        ? 'assets/social_media/instagram-dark.png'
-                                        : 'assets/social_media/tiktok-dark.png',
+                                        ? (theme.brightness == Brightness.dark ? 'assets/social_media/instagram-dark.png' : 'assets/social_media/instagram-light.png')
+                                        : (theme.brightness == Brightness.dark ? 'assets/social_media/tiktok-dark.png' : 'assets/social_media/tiktok-light.png'),
                                     width: 12,
                                     height: 12,
                                   ),

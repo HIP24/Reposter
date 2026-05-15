@@ -80,7 +80,7 @@ class RepostDraft {
 
 class RepostService {
   void _log(String message) {
-    if (kDebugMode) print('[RepostService] $message');
+    if (kDebugMode) debugPrint('[RepostService] $message');
   }
 
   static const browserHeaders = <String, String>{
@@ -110,7 +110,7 @@ class RepostService {
         if (!isNetworkError || attempts > maxRetries) {
           rethrow;
         }
-        if (kDebugMode) print('[RepostService] Network error ($e), retrying ($attempts/$maxRetries)...');
+        if (kDebugMode) debugPrint('[RepostService] Network error ($e), retrying ($attempts/$maxRetries)...');
         await Future.delayed(Duration(milliseconds: 500 * attempts));
       }
     }
@@ -921,7 +921,7 @@ class RepostService {
       await file.writeAsBytes(response.bodyBytes);
       return filePath;
     } catch (e) {
-      if (kDebugMode) print('[RepostService] Image cache failed for $url: $e');
+      if (kDebugMode) debugPrint('[RepostService] Image cache failed for $url: $e');
       return null;
     }
   }
@@ -962,7 +962,7 @@ class ShareBridge {
     required String filePath,
     required String caption,
   }) async {
-    if (kDebugMode) print('[Share] Sharing ${platform.label} video: $filePath');
+    if (kDebugMode) debugPrint('[Share] Sharing ${platform.label} video: $filePath');
     if (defaultTargetPlatform == TargetPlatform.android) {
       await _shareOnAndroid(
         platform: platform,

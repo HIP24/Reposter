@@ -55,6 +55,9 @@ class MainActivity : FlutterActivity() {
         val file = File(filePath)
         require(file.exists()) { "Video file not found." }
 
+        // Log file size for debugging
+        android.util.Log.d("ShareBridge", "Sharing video: $filePath, size: ${file.length()} bytes")
+
         val uri = FileProvider.getUriForFile(
             this,
             "${applicationContext.packageName}.fileprovider",

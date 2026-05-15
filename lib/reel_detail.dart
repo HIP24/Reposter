@@ -67,6 +67,16 @@ class _RepostDetailPageState extends State<RepostDetailPage> {
   String get _caption =>
       widget.item.draft.buildCaption(_descriptionController.text);
 
+  String _formatDuration(Duration d) {
+    final hours = d.inHours;
+    final minutes = d.inMinutes.remainder(60);
+    final seconds = d.inSeconds.remainder(60);
+    if (hours > 0) {
+      return '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+
   Future<void> _shareTo(SocialPlatform target) async {
     await Clipboard.setData(ClipboardData(text: _caption));
     try {
@@ -252,6 +262,49 @@ class _RepostDetailPageState extends State<RepostDetailPage> {
                                                         color: Colors.white,
                                                         size: 80,
                                                       ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              Positioned(
+                                                left: 8,
+                                                bottom: 8,
+                                                child: Container(
+                                                  padding: const EdgeInsets.all(4),
+                                                  decoration: BoxDecoration(
+                                                    color: appTheme.brightness == Brightness.dark
+                                                        ? Colors.black.withValues(alpha: 0.7)
+                                                        : Colors.white.withValues(alpha: 0.75),
+                                                    borderRadius: BorderRadius.circular(4),
+                                                  ),
+                                                  child: Image.asset(
+                                                    widget.item.draft.platform == SocialPlatform.instagram
+                                                        ? (appTheme.brightness == Brightness.dark ? 'assets/social_media/instagram-dark.png' : 'assets/social_media/instagram-light.png')
+                                                        : (appTheme.brightness == Brightness.dark ? 'assets/social_media/tiktok-dark.png' : 'assets/social_media/tiktok-light.png'),
+                                                    width: 16,
+                                                    height: 16,
+                                                  ),
+                                                ),
+                                              ),
+                                              Positioned(
+                                                right: 8,
+                                                bottom: 8,
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                                  decoration: BoxDecoration(
+                                                    color: appTheme.brightness == Brightness.dark
+                                                        ? Colors.black.withValues(alpha: 0.7)
+                                                        : Colors.white.withValues(alpha: 0.75),
+                                                    borderRadius: BorderRadius.circular(4),
+                                                  ),
+                                                  child: Text(
+                                                    _formatDuration(_videoController!.value.duration),
+                                                    style: TextStyle(
+                                                      color: appTheme.brightness == Brightness.dark
+                                                          ? Colors.white
+                                                          : Colors.black87,
+                                                      fontSize: 12,
+                                                      fontWeight: FontWeight.w600,
                                                     ),
                                                   ),
                                                 ),
